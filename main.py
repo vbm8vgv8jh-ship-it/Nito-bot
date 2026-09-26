@@ -63,8 +63,7 @@ async def auto_backup(guild):
         for ch in guild.channels:
             if isinstance(ch, discord.CategoryChannel): continue
             data["channels"].append({"name": ch.name, "type": str(ch.type), "category": ch.category.name if ch.category else None, "position": ch.position})
-        with open(path, "w", encoding="utf-8") as f:
-            json.dump(data, f, indent=4)
+        with open(path, "w", encoding="utf-8") as f: json.dump(data, f, indent=4)
     except: pass
 
 async def nuke_punish(guild, uid, reason):
@@ -86,7 +85,7 @@ async def nuke_punish(guild, uid, reason):
 
 @bot.event
 async def on_ready():
-    print(f"Listo {bot.user} - {len(bot.guilds)} servers")
+    print(f"Listo {bot.user}")
 
 @bot.event
 async def on_member_update(before,after):
@@ -177,8 +176,7 @@ async def on_member_join(member):
             return
     except: pass
 
-# ===== COMANDOS FINALES =====
-
+# ===== LISTAS CON FOTO SERVER Y FORMATO nombre (id) =====
 @bot.command(name="owner_list")
 async def owner_list(ctx):
     if ctx.author.id!=MY_ID: return
@@ -216,6 +214,44 @@ async def whitelist_list(ctx):
         e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
+# ===== ADD SIN REQUESTED BY =====
+@bot.command(name="owner_add")
+async def owner_add(ctx, user_id: str):
+    if ctx.author.id!= MY_ID: return
+    try:
+        uid = int(user_id)
+        u = bot.get_user(uid) or await bot.fetch_user(uid)
+        name = u.name if u else user_id
+    except:
+        uid = int(user_id)
+        name = user_id
+    OWNER_IDS.add(uid)
+    save_owners()
+    body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`)\n━━━━━━━━━━━━━━━━━━━━"
+    e = discord.Embed(description=f"**Owner Added**\n\n{body}", color=0x2b2d31)
+    if ctx.guild.icon:
+        e.set_thumbnail(url=ctx.guild.icon.url)
+    await ctx.send(embed=e)
+
+@bot.command(name="whitelist_add")
+async def whitelist_add(ctx, user_id: str):
+    if ctx.author.id!= MY_ID: return
+    try:
+        uid = int(user_id)
+        u = bot.get_user(uid) or await bot.fetch_user(uid)
+        name = u.name if u else user_id
+    except:
+        uid = int(user_id)
+        name = user_id
+    WHITELIST_IDS.add(uid)
+    save_whitelist()
+    body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`)\n━━━━━━━━━━━━━━━━━━━━"
+    e = discord.Embed(description=f"**Whitelist Added**\n\n{body}", color=0x2b2d31)
+    if ctx.guild.icon:
+        e.set_thumbnail(url=ctx.guild.icon.url)
+    await ctx.send(embed=e)
+
+# ===== INFO COMPLETA =====
 @bot.command(name="userinfo")
 async def userinfo(ctx, member: discord.Member = None):
     m = member or ctx.author
@@ -279,7 +315,6 @@ Bots: {len([m for m in g.members if m.bot])}
 📊 **Canales**
 Texto: {len(g.text_channels)}
 Voz: {len(g.voice_channels)}
-Categorias: {len(g.categories)}
 
 ✨ **Extras**
 Roles: {len(g.roles)}
@@ -295,21 +330,11 @@ async def estado(ctx):
     if not has_perm(ctx): return
     g = ctx.guild
     body = f"""━━━━━━━━━━━━━━━━━━━━
-🛡️ **AntiNuke**
-🟢 ACTIVO
-
-🤖 **AntiBot**
-🟢 ACTIVO
-
-🔨 **AntiBan / AntiKick**
-🟢 ACTIVO
-
-📦 **Backup Auto**
-1 DM cada 30s
-
-📊 **Stats**
-Servers: {len(bot.guilds)}
-Ping: {round(bot.latency*1000)}ms
+🛡️ **AntiNuke** - 🟢 ACTIVO
+🤖 **AntiBot** - 🟢 ACTIVO
+🔨 **AntiBan/Kick** - 🟢 ACTIVO
+📦 **Backup Auto** - 1 DM cada 30s
+📊 **Servers:** {len(bot.guilds)} | **Ping:** {round(bot.latency*1000)}ms
 ━━━━━━━━━━━━━━━━━━━━"""
     e = discord.Embed(description=f"**Estado de {g.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
     if g.icon:
@@ -319,7 +344,7 @@ Ping: {round(bot.latency*1000)}ms
 @bot.command(name="avatar")
 async def avatar(ctx, member: discord.Member = None):
     m = member or ctx.author
-    body = f"━━━━━━━━━━━━━━━━━━━━\n👤 {m.mention}\n`{m.id}`\n[Link Directo]({m.display_avatar.url})\n━━━━━━━━━━━━━━━━━━━━"
+    body = f"━━━━━━━━━━━━━━━━━━━━\n👤 {m.mention}\n`{m.id}`\n[Link]({m.display_avatar.url})\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Avatar de {m.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
     e.set_thumbnail(url=m.display_avatar.url)
     e.set_image(url=m.display_avatar.url)
@@ -329,23 +354,21 @@ async def avatar(ctx, member: discord.Member = None):
 async def ban(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
     await ctx.guild.ban(m,reason=reason)
-    body = f"━━━━━━━━━━━━━━━━━━━━\n• User • ( `{m.name}` )\n• Reason • ( `{reason}` )\n━━━━━━━━━━━━━━━━━━━━"
+    body = f"━━━━━━━━━━━━━━━━━━━━\n{m.name} (`{m.id}`)\nReason: `{reason}`\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Member Banned**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+    if ctx.guild.icon:
+        e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="kick")
 async def kick(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
     await m.kick(reason=reason)
-    body = f"━━━━━━━━━━━━━━━━━━━━\n• User • ( `{m.name}` )\n• Reason • ( `{reason}` )\n━━━━━━━━━━━━━━━━━━━━"
+    body = f"━━━━━━━━━━━━━━━━━━━━\n{m.name} (`{m.id}`)\nReason: `{reason}`\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Member Kicked**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+    if ctx.guild.icon:
+        e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
-
-@bot.command(name="owner_add")
-async def owner_add(ctx,user_id:str):
-    if ctx.author.id!=MY_ID: return
-    OWNER_IDS.add(int(user_id)); save_owners()
-    await ctx.send(embed=discord.Embed(description=f"**Owner Added**\n\n━━━━━━━━━━━━━━━━━━━━\n{user_id} (`{user_id}`)\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
 
 @bot.command(name="owner_remove")
 async def owner_remove(ctx,user_id:str):
@@ -353,13 +376,10 @@ async def owner_remove(ctx,user_id:str):
     uid=int(user_id)
     if uid!=MY_ID and uid in OWNER_IDS:
         OWNER_IDS.remove(uid); save_owners()
-        await ctx.send(embed=discord.Embed(description=f"**Owner Removed**\n\n━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
-
-@bot.command(name="whitelist_add")
-async def whitelist_add(ctx,user_id:str):
-    if ctx.author.id!=MY_ID: return
-    WHITELIST_IDS.add(int(user_id)); save_whitelist()
-    await ctx.send(embed=discord.Embed(description=f"**Whitelist Added**\n\n━━━━━━━━━━━━━━━━━━━━\n{user_id} (`{user_id}`)\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
+        body = f"━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━"
+        e = discord.Embed(description=f"**Owner Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
+        await ctx.send(embed=e)
 
 @bot.command(name="whitelist_remove")
 async def whitelist_remove(ctx,user_id:str):
@@ -367,7 +387,10 @@ async def whitelist_remove(ctx,user_id:str):
     uid=int(user_id)
     if uid in WHITELIST_IDS:
         WHITELIST_IDS.remove(uid); save_whitelist()
-        await ctx.send(embed=discord.Embed(description=f"**Whitelist Removed**\n\n━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
+        body = f"━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━"
+        e = discord.Embed(description=f"**Whitelist Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
+        await ctx.send(embed=e)
 
 @bot.command(name="backup")
 async def backup(ctx, action: str = None):
@@ -378,13 +401,18 @@ async def backup(ctx, action: str = None):
         await auto_backup(guild)
         with open(path,"r",encoding="utf-8") as f: data=json.load(f)
         body = f"━━━━━━━━━━━━━━━━━━━━\n• Roles • ( `{len(data['roles'])}` )\n• Channels • ( `{len(data['channels'])}` )\n━━━━━━━━━━━━━━━━━━━━"
-        await ctx.send(embed=discord.Embed(description=f"**Backup Created**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31), file=discord.File(path))
+        e = discord.Embed(description=f"**Backup Created**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        if guild.icon: e.set_thumbnail(url=guild.icon.url)
+        await ctx.send(embed=e, file=discord.File(path))
     elif action == "load":
         if not os.path.exists(path):
-            await ctx.send(embed=discord.Embed(description=f"**Error**\n\n━━━━━━━━━━━━━━━━━━━━\n`No hay backup`\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
+            e = discord.Embed(description=f"**Error**\n\n━━━━━━━━━━━━━━━━━━━━\n`No hay backup`\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+            await ctx.send(embed=e)
             return
         with open(path,"r",encoding="utf-8") as f: data=json.load(f)
-        await ctx.send(embed=discord.Embed(description=f"**Restoring**\n\n━━━━━━━━━━━━━━━━━━━━\n• {len(data['roles'])} roles\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
+        e = discord.Embed(description=f"**Restoring**\n\n━━━━━━━━━━━━━━━━━━━━\n• {len(data['roles'])} roles\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        if guild.icon: e.set_thumbnail(url=guild.icon.url)
+        await ctx.send(embed=e)
         existing=[r.name for r in guild.roles]
         for r in data["roles"]:
             if r["name"] not in existing:
@@ -392,9 +420,13 @@ async def backup(ctx, action: str = None):
                     await guild.create_role(name=r["name"], colour=discord.Colour(r["color"]), permissions=discord.Permissions(r["permissions"]), hoist=r["hoist"], mentionable=r["mentionable"])
                     await asyncio.sleep(0.3)
                 except: pass
-        await ctx.send(embed=discord.Embed(description=f"**Restored**\n\n━━━━━━━━━━━━━━━━━━━━\n`Completado`\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
+        e = discord.Embed(description=f"**Restored**\n\n━━━━━━━━━━━━━━━━━━━━\n`Completado`\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        if guild.icon: e.set_thumbnail(url=guild.icon.url)
+        await ctx.send(embed=e)
     else:
         body = "━━━━━━━━━━━━━━━━━━━━\n• _backup create\n• _backup load\n━━━━━━━━━━━━━━━━━━━━"
-        await ctx.send(embed=discord.Embed(description=f"**Backup Help**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31))
+        e = discord.Embed(description=f"**Backup Help**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        if guild.icon: e.set_thumbnail(url=guild.icon.url)
+        await ctx.send(embed=e)
 
 bot.run(TOKEN)
