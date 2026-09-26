@@ -86,7 +86,7 @@ async def nuke_punish(guild, uid, reason):
 
 @bot.event
 async def on_ready():
-    print(f"Listo {bot.user} - Prefix _ | 8dos1")
+    print(f"Listo {bot.user} - {len(bot.guilds)} servers")
 
 @bot.event
 async def on_member_update(before,after):
@@ -98,11 +98,10 @@ async def on_member_update(before,after):
         async for entry in after.guild.audit_logs(limit=3,action=discord.AuditLogAction.member_role_update):
             if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
             if entry.target.id!=after.id: continue
-            exe=entry.user
-            if exe.bot or is_safe(exe.id, after.guild.owner_id): return
+            if is_safe(entry.user.id, after.guild.owner_id): return
             try: await after.edit(roles=before.roles, reason="AntiRole")
             except: pass
-            try: await after.guild.kick(exe, reason=f"AntiRole {risky[0].name}")
+            try: await after.guild.kick(entry.user, reason="AntiRole")
             except: pass
             return
     except: pass
@@ -110,57 +109,57 @@ async def on_member_update(before,after):
 @bot.event
 async def on_member_ban(guild,user):
     try:
-        async for entry in guild.audit_logs(limit=1, action=discord.AuditLogAction.ban):
-            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
-            if is_safe(entry.user.id, guild.owner_id): return
-            if is_spam(entry.user.id): await nuke_punish(guild, entry.user.id, "Mass Ban")
+        async for e in guild.audit_logs(limit=1,action=discord.AuditLogAction.ban):
+            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
+            if is_safe(e.user.id, guild.owner_id): return
+            if is_spam(e.user.id): await nuke_punish(guild,e.user.id,"Mass Ban")
     except: pass
 
 @bot.event
 async def on_member_remove(member):
     try:
         await asyncio.sleep(1)
-        async for entry in member.guild.audit_logs(limit=1, action=discord.AuditLogAction.kick):
-            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
-            if entry.target.id!=member.id: continue
-            if is_safe(entry.user.id, member.guild.owner_id): return
-            if is_spam(entry.user.id): await nuke_punish(member.guild, entry.user.id, "Mass Kick")
+        async for e in member.guild.audit_logs(limit=1,action=discord.AuditLogAction.kick):
+            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
+            if e.target.id!=member.id: continue
+            if is_safe(e.user.id, member.guild.owner_id): return
+            if is_spam(e.user.id): await nuke_punish(member.guild,e.user.id,"Mass Kick")
     except: pass
 
 @bot.event
 async def on_guild_channel_delete(channel):
     try:
-        async for entry in channel.guild.audit_logs(limit=1, action=discord.AuditLogAction.channel_delete):
-            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
-            if is_safe(entry.user.id, channel.guild.owner_id): return
-            if is_spam(entry.user.id): await nuke_punish(channel.guild, entry.user.id, "Mass Channel Delete")
+        async for e in channel.guild.audit_logs(limit=1,action=discord.AuditLogAction.channel_delete):
+            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
+            if is_safe(e.user.id, channel.guild.owner_id): return
+            if is_spam(e.user.id): await nuke_punish(channel.guild,e.user.id,"Channel Delete")
     except: pass
 
 @bot.event
 async def on_guild_channel_create(channel):
     try:
-        async for entry in channel.guild.audit_logs(limit=1, action=discord.AuditLogAction.channel_create):
-            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
-            if is_safe(entry.user.id, channel.guild.owner_id): return
-            if is_spam(entry.user.id): await nuke_punish(channel.guild, entry.user.id, "Mass Channel Create")
+        async for e in channel.guild.audit_logs(limit=1,action=discord.AuditLogAction.channel_create):
+            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
+            if is_safe(e.user.id, channel.guild.owner_id): return
+            if is_spam(e.user.id): await nuke_punish(channel.guild,e.user.id,"Channel Create")
     except: pass
 
 @bot.event
 async def on_guild_role_delete(role):
     try:
-        async for entry in role.guild.audit_logs(limit=1, action=discord.AuditLogAction.role_delete):
-            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
-            if is_safe(entry.user.id, role.guild.owner_id): return
-            if is_spam(entry.user.id): await nuke_punish(role.guild, entry.user.id, "Mass Role Delete")
+        async for e in role.guild.audit_logs(limit=1,action=discord.AuditLogAction.role_delete):
+            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
+            if is_safe(e.user.id, role.guild.owner_id): return
+            if is_spam(e.user.id): await nuke_punish(role.guild,e.user.id,"Role Delete")
     except: pass
 
 @bot.event
 async def on_guild_role_create(role):
     try:
-        async for entry in role.guild.audit_logs(limit=1, action=discord.AuditLogAction.role_create):
-            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
-            if is_safe(entry.user.id, role.guild.owner_id): return
-            if is_spam(entry.user.id): await nuke_punish(role.guild, entry.user.id, "Mass Role Create")
+        async for e in role.guild.audit_logs(limit=1,action=discord.AuditLogAction.role_create):
+            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
+            if is_safe(e.user.id, role.guild.owner_id): return
+            if is_spam(e.user.id): await nuke_punish(role.guild,e.user.id,"Role Create")
     except: pass
 
 @bot.event
@@ -168,25 +167,33 @@ async def on_member_join(member):
     if not member.bot: return
     await asyncio.sleep(1.5)
     try:
-        async for entry in member.guild.audit_logs(limit=5, action=discord.AuditLogAction.bot_add):
-            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>15: continue
-            if entry.target.id!=member.id: continue
-            if is_safe(entry.user.id, member.guild.owner_id): return
-            try: await member.ban(reason=f"Antibot por {entry.user}")
+        async for e in member.guild.audit_logs(limit=5,action=discord.AuditLogAction.bot_add):
+            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>15: continue
+            if e.target.id!=member.id: continue
+            if is_safe(e.user.id, member.guild.owner_id): return
+            try: await member.ban(reason="Antibot")
             except: pass
-            await nuke_punish(member.guild, entry.user.id, "Agrego bot")
+            await nuke_punish(member.guild,e.user.id,"Bot Add")
             return
     except: pass
 
-# ========== COMANDOS V2 + INFO COMPLETA ==========
+# ===== COMANDOS FINALES =====
 
 @bot.command(name="owner_list")
 async def owner_list(ctx):
     if ctx.author.id!=MY_ID: return
-    lines = [f"• <@{uid}> • ( `{uid}` )" for uid in OWNER_IDS]
-    body = "━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines) + "\n━━━━━━━━━━━━━━━━━━━━"
+    lines=[]
+    for uid in OWNER_IDS:
+        try:
+            u = bot.get_user(uid) or await bot.fetch_user(uid)
+            name = u.name if u else f"ID {uid}"
+        except:
+            name = f"ID {uid}"
+        lines.append(f"{name} (`{uid}`)")
+    body = "━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines) + "\n━━━━━━━━━━━━━━━━━━━━" if lines else "━━━━━━━━━━━━━━━━━━━━\n`Vacío`\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Bot Owners List ({len(OWNER_IDS)})**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    e.set_thumbnail(url=ctx.author.display_avatar.url)
+    if ctx.guild.icon:
+        e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="whitelist_list")
@@ -195,10 +202,18 @@ async def whitelist_list(ctx):
     if not WHITELIST_IDS:
         body = "━━━━━━━━━━━━━━━━━━━━\n`Vacía`\n━━━━━━━━━━━━━━━━━━━━"
     else:
-        lines = [f"• <@{uid}> • ( `{uid}` )" for uid in WHITELIST_IDS]
+        lines=[]
+        for uid in WHITELIST_IDS:
+            try:
+                u = bot.get_user(uid) or await bot.fetch_user(uid)
+                name = u.name if u else f"ID {uid}"
+            except:
+                name = f"ID {uid}"
+            lines.append(f"{name} (`{uid}`)")
         body = "━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines) + "\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Whitelist List ({len(WHITELIST_IDS)})**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    e.set_thumbnail(url=ctx.author.display_avatar.url)
+    if ctx.guild.icon:
+        e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="userinfo")
@@ -212,7 +227,6 @@ async def userinfo(ctx, member: discord.Member = None):
     roles_txt = " ".join([r.mention for r in roles[:10]]) if roles else "`Sin roles`"
     if len(roles) > 10:
         roles_txt += f" `+{len(roles)-10} más`"
-
     body = f"""━━━━━━━━━━━━━━━━━━━━
 👤 **Usuario**
 {m.mention}
@@ -235,7 +249,6 @@ async def userinfo(ctx, member: discord.Member = None):
 🎭 **Roles [{len(roles)}]**
 {roles_txt}
 ━━━━━━━━━━━━━━━━━━━━"""
-
     e = discord.Embed(description=f"**Información de {m.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
     e.set_thumbnail(url=m.display_avatar.url)
     await ctx.send(embed=e)
@@ -246,7 +259,6 @@ async def serverinfo(ctx):
     owner = g.owner or await bot.fetch_user(g.owner_id)
     created = discord.utils.format_dt(g.created_at, "F")
     ago = discord.utils.format_dt(g.created_at, "R")
-
     body = f"""━━━━━━━━━━━━━━━━━━━━
 👑 **Owner**
 {owner.mention}
@@ -272,9 +284,7 @@ Categorias: {len(g.categories)}
 ✨ **Extras**
 Roles: {len(g.roles)}
 Boosts: {g.premium_subscription_count}
-Emojis: {len(g.emojis)}
 ━━━━━━━━━━━━━━━━━━━━"""
-
     e = discord.Embed(description=f"**{g.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
     if g.icon:
         e.set_thumbnail(url=g.icon.url)
@@ -301,7 +311,6 @@ async def estado(ctx):
 Servers: {len(bot.guilds)}
 Ping: {round(bot.latency*1000)}ms
 ━━━━━━━━━━━━━━━━━━━━"""
-
     e = discord.Embed(description=f"**Estado de {g.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
     if g.icon:
         e.set_thumbnail(url=g.icon.url)
@@ -336,9 +345,7 @@ async def kick(ctx,m:discord.Member,*,reason="Sin razón"):
 async def owner_add(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
     OWNER_IDS.add(int(user_id)); save_owners()
-    body = f"━━━━━━━━━━━━━━━━━━━━\n• <@{user_id}> • ( `{user_id}` ) added\n━━━━━━━━━━━━━━━━━━━━"
-    e = discord.Embed(description=f"**Owner Added**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    await ctx.send(embed=e)
+    await ctx.send(embed=discord.Embed(description=f"**Owner Added**\n\n━━━━━━━━━━━━━━━━━━━━\n{user_id} (`{user_id}`)\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
 
 @bot.command(name="owner_remove")
 async def owner_remove(ctx,user_id:str):
@@ -346,17 +353,13 @@ async def owner_remove(ctx,user_id:str):
     uid=int(user_id)
     if uid!=MY_ID and uid in OWNER_IDS:
         OWNER_IDS.remove(uid); save_owners()
-        body = f"━━━━━━━━━━━━━━━━━━━━\n• `{uid}` • ( `removed` )\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Owner Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        await ctx.send(embed=e)
+        await ctx.send(embed=discord.Embed(description=f"**Owner Removed**\n\n━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
 
 @bot.command(name="whitelist_add")
 async def whitelist_add(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
     WHITELIST_IDS.add(int(user_id)); save_whitelist()
-    body = f"━━━━━━━━━━━━━━━━━━━━\n• <@{user_id}> • ( `added` )\n━━━━━━━━━━━━━━━━━━━━"
-    e = discord.Embed(description=f"**Whitelist Added**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    await ctx.send(embed=e)
+    await ctx.send(embed=discord.Embed(description=f"**Whitelist Added**\n\n━━━━━━━━━━━━━━━━━━━━\n{user_id} (`{user_id}`)\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
 
 @bot.command(name="whitelist_remove")
 async def whitelist_remove(ctx,user_id:str):
@@ -364,9 +367,7 @@ async def whitelist_remove(ctx,user_id:str):
     uid=int(user_id)
     if uid in WHITELIST_IDS:
         WHITELIST_IDS.remove(uid); save_whitelist()
-        body = f"━━━━━━━━━━━━━━━━━━━━\n• `{uid}` • ( `removed` )\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Whitelist Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        await ctx.send(embed=e)
+        await ctx.send(embed=discord.Embed(description=f"**Whitelist Removed**\n\n━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
 
 @bot.command(name="backup")
 async def backup(ctx, action: str = None):
@@ -375,36 +376,25 @@ async def backup(ctx, action: str = None):
     path = f"{BACKUP_DIR}/{guild.id}.json"
     if action == "create":
         await auto_backup(guild)
-        with open(path,"r",encoding="utf-8") as f:
-            data=json.load(f)
+        with open(path,"r",encoding="utf-8") as f: data=json.load(f)
         body = f"━━━━━━━━━━━━━━━━━━━━\n• Roles • ( `{len(data['roles'])}` )\n• Channels • ( `{len(data['channels'])}` )\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Backup Created**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        await ctx.send(embed=e, file=discord.File(path))
+        await ctx.send(embed=discord.Embed(description=f"**Backup Created**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31), file=discord.File(path))
     elif action == "load":
         if not os.path.exists(path):
-            body = "━━━━━━━━━━━━━━━━━━━━\n• Error • ( `No hay backup` )\n━━━━━━━━━━━━━━━━━━━━"
-            e = discord.Embed(description=f"**Error**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-            await ctx.send(embed=e)
+            await ctx.send(embed=discord.Embed(description=f"**Error**\n\n━━━━━━━━━━━━━━━━━━━━\n`No hay backup`\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
             return
-        with open(path, "r", encoding="utf-8") as f:
-            data = json.load(f)
-        body = f"━━━━━━━━━━━━━━━━━━━━\n• Roles • ( `{len(data['roles'])}` )\n• Channels • ( `{len(data['channels'])}` )\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Restoring**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        await ctx.send(embed=e)
-        # restore roles
-        existing_roles = [r.name for r in guild.roles]
+        with open(path,"r",encoding="utf-8") as f: data=json.load(f)
+        await ctx.send(embed=discord.Embed(description=f"**Restoring**\n\n━━━━━━━━━━━━━━━━━━━━\n• {len(data['roles'])} roles\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
+        existing=[r.name for r in guild.roles]
         for r in data["roles"]:
-            if r["name"] not in existing_roles:
+            if r["name"] not in existing:
                 try:
                     await guild.create_role(name=r["name"], colour=discord.Colour(r["color"]), permissions=discord.Permissions(r["permissions"]), hoist=r["hoist"], mentionable=r["mentionable"])
                     await asyncio.sleep(0.3)
                 except: pass
-        body = "━━━━━━━━━━━━━━━━━━━━\n• Status • ( `Completado` )\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Restored**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        await ctx.send(embed=e)
+        await ctx.send(embed=discord.Embed(description=f"**Restored**\n\n━━━━━━━━━━━━━━━━━━━━\n`Completado`\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31))
     else:
-        body = "━━━━━━━━━━━━━━━━━━━━\n• _backup create • ( `guardar` )\n• _backup load • ( `restaurar` )\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Backup Help**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        await ctx.send(embed=e)
+        body = "━━━━━━━━━━━━━━━━━━━━\n• _backup create\n• _backup load\n━━━━━━━━━━━━━━━━━━━━"
+        await ctx.send(embed=discord.Embed(description=f"**Backup Help**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31))
 
 bot.run(TOKEN)
