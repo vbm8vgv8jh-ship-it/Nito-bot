@@ -55,6 +55,66 @@ async def nuke_punish(guild, uid, reason):
         await guild.ban(m, reason=f"ANTINUKE: {reason}")
     except: pass
 
+# --- PANEL CON BOTONES ---
+class PanelView(discord.ui.View):
+    def __init__(self):
+        super().__init__(timeout=None)
+
+    @discord.ui.button(label="Whitelist", emoji="🔒", style=discord.ButtonStyle.gray)
+    async def wl(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id!= MY_ID and interaction.user.id not in OWNER_IDS:
+            await interaction.response.send_message("No tienes permiso", ephemeral=True)
+            return
+        if not WHITELIST_IDS:
+            txt = "Whitelist vacía"
+        else:
+            txt = "\n".join(f"<@{u}> - ( {u} )" for u in WHITELIST_IDS)
+        embed = discord.Embed(description=txt, color=0x2B2D31)
+        embed.set_author(name="🔒 Whitelist")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Owners", emoji="👑", style=discord.ButtonStyle.gray)
+    async def owners(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id!= MY_ID:
+            await interaction.response.send_message("Solo el main owner", ephemeral=True)
+            return
+        txt = "\n".join(f"<@{u}> - ( {u} )" for u in OWNER_IDS)
+        embed = discord.Embed(description=txt, color=0x2B2D31)
+        embed.set_author(name="👑 Owners")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
+    @discord.ui.button(label="Backup Create", emoji="💾", style=discord.ButtonStyle.gray)
+    async def backup(self, interaction: discord.Interaction, button: discord.ui.Button):
+        if interaction.user.id not in OWNER_IDS and interaction.user.id!= MY_ID:
+            await interaction.response.send_message("No tienes permiso", ephemeral=True)
+            return
+        await interaction.response.defer(ephemeral=True)
+        guild = interaction.guild
+        path = f"{BACKUP_DIR}/{guild.id}.json"
+        data = {"guild_name": guild.name, "roles": [], "categories": [], "channels": []}
+        for r in reversed(guild.roles):
+            if r.is_default() or r.managed or r.is_bot_managed(): continue
+            data["roles"].append({"name": r.name, "color": r.color.value, "permissions": r.permissions.value, "hoist": r.hoist, "mentionable": r.mentionable})
+        for cat in guild.categories:
+            data["categories"].append({"name": cat.name, "position": cat.position})
+        for ch in guild.channels:
+            if isinstance(ch, discord.CategoryChannel): continue
+            data["channels"].append({"name": ch.name, "type": str(ch.type), "category": ch.category.name if ch.category else None, "position": ch.position})
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        await interaction.followup.send(f"✅ Backup creado: {len(data['roles'])} roles, {len(data['channels'])} canales", ephemeral=True)
+
+    @discord.ui.button(label="ServerInfo", emoji="📊", style=discord.ButtonStyle.gray)
+    async def si(self, interaction: discord.Interaction, button: discord.ui.Button):
+        g = interaction.guild
+        owner = g.owner or await g.fetch_member(g.owner_id)
+        embed = discord.Embed(color=0x2B2D31)
+        embed.set_author(name=g.name, icon_url=g.icon.url if g.icon else None)
+        embed.add_field(name="👑 Owner", value=f"{owner.mention}")
+        embed.add_field(name="👥 Miembros", value=f"{g.member_count}")
+        embed.add_field(name="📊 Canales", value=f"{len(g.channels)}")
+        await interaction.response.send_message(embed=embed, ephemeral=True)
+
 @bot.event
 async def on_ready():
     print(f"Listo {bot.user} - Prefix _")
@@ -143,7 +203,6 @@ async def on_member_join(member):
             return
     except: pass
 
-# --- MODERACION PRIVADA ---
 @bot.command(name="ban")
 async def ban(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
@@ -192,7 +251,6 @@ async def whitelist_list(ctx):
         text = "\n".join(f"<@{u}> - ( {u} )" for u in WHITELIST_IDS)
         await ctx.send(embed=bubble(f"{text}"))
 
-# --- PUBLICOS ESTETICOS ---
 @bot.command(name="avatar")
 async def avatar(ctx, member: discord.Member = None):
     member = member or ctx.author
@@ -246,7 +304,6 @@ async def serverinfo(ctx):
         embed.set_image(url=g.banner.url)
     await ctx.send(embed=embed)
 
-# --- BACKUP SYSTEM ---
 @bot.command(name="backup")
 async def backup(ctx, action: str = None):
     if not has_perm(ctx): return
@@ -261,7 +318,7 @@ async def backup(ctx, action: str = None):
             data["categories"].append({"name": cat.name, "position": cat.position})
         for ch in guild.channels:
             if isinstance(ch, discord.CategoryChannel): continue
-            data["channels"].append({"name": ch.name, "type": str(ch.type), "category": ch.category.name if ch.category else None, "position": ch.position, "topic": getattr(ch, 'topic', None)})
+            data["channels"].append({"name": ch.name, "type": str(ch.type), "category": ch.category.name if ch.category else None, "position": ch.position})
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
         await ctx.send(embed=bubble(f"✅ Backup creado: {len(data['roles'])} roles, {len(data['channels'])} canales guardados"), file=discord.File(path))
@@ -301,5 +358,13 @@ async def backup(ctx, action: str = None):
         await ctx.send(embed=bubble("✅ Restauración completada"))
     else:
         await ctx.send(embed=bubble("Usa: `_backup create` para guardar y `_backup load` para restaurar"))
+
+@bot.command(name="panel")
+async def panel(ctx):
+    if not has_perm(ctx): return
+    embed = discord.Embed(title="🛡️ PANEL DE CONTROL", description="Gestiona tu servidor con un click\n\n**Estado:** 🟢 Activo y protegiendo\n**Antinuke:** 🟢 ON\n**Antibot:** 🟢 ON", color=0x2B2D31)
+    embed.set_thumbnail(url=ctx.guild.icon.url if ctx.guild.icon else None)
+    embed.set_footer(text=f"Panel solicitado por {ctx.author.name}")
+    await ctx.send(embed=embed, view=PanelView())
 
 bot.run(TOKEN)
