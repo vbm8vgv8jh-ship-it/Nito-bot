@@ -7,6 +7,8 @@ TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("TOKEN") or os.getenv("DISCO
 MY_ID = 1310357536087740450
 OWNER_FILE="owners.json"
 WHITELIST_FILE="whitelist.json"
+BACKUP_DIR="backups"
+os.makedirs(BACKUP_DIR, exist_ok=True)
 
 def load_owners():
     if os.path.exists(OWNER_FILE):
@@ -141,6 +143,7 @@ async def on_member_join(member):
             return
     except: pass
 
+# --- MODERACION PRIVADA ---
 @bot.command(name="ban")
 async def ban(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
@@ -189,14 +192,13 @@ async def whitelist_list(ctx):
         text = "\n".join(f"<@{u}> - ( {u} )" for u in WHITELIST_IDS)
         await ctx.send(embed=bubble(f"{text}"))
 
-# PUBLICOS PARA TODOS
+# --- PUBLICOS ---
 @bot.command(name="avatar")
 async def avatar(ctx, member: discord.Member = None):
     member = member or ctx.author
     embed = bubble(f"**Avatar de {member.name}**\n( {member.id} )")
     embed.set_image(url=member.display_avatar.url)
     await ctx.send(embed=embed)
-
 @bot.command(name="userinfo")
 async def userinfo(ctx, member: discord.Member = None):
     member = member or ctx.author
@@ -207,7 +209,6 @@ async def userinfo(ctx, member: discord.Member = None):
     embed = bubble(desc)
     embed.set_thumbnail(url=member.display_avatar.url)
     await ctx.send(embed=embed)
-
 @bot.command(name="serverinfo")
 async def serverinfo(ctx):
     g = ctx.guild
@@ -216,5 +217,80 @@ async def serverinfo(ctx):
     if g.icon:
         embed.set_thumbnail(url=g.icon.url)
     await ctx.send(embed=embed)
+
+# --- BACKUP SYSTEM ---
+@bot.command(name="backup")
+async def backup(ctx, action: str = None):
+    if not has_perm(ctx): return
+    guild = ctx.guild
+    path = f"{BACKUP_DIR}/{guild.id}.json"
+
+    if action == "create":
+        data = {
+            "guild_name": guild.name,
+            "roles": [],
+            "categories": [],
+            "channels": []
+        }
+        for r in reversed(guild.roles):
+            if r.is_default() or r.managed or r.is_bot_managed(): continue
+            data["roles"].append({
+                "name": r.name, "color": r.color.value,
+                "permissions": r.permissions.value, "hoist": r.hoist,
+                "mentionable": r.mentionable
+            })
+        for cat in guild.categories:
+            data["categories"].append({"name": cat.name, "position": cat.position})
+        for ch in guild.channels:
+            if isinstance(ch, discord.CategoryChannel): continue
+            data["channels"].append({
+                "name": ch.name, "type": str(ch.type),
+                "category": ch.category.name if ch.category else None,
+                "position": ch.position,
+                "topic": getattr(ch, 'topic', None)
+            })
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+        await ctx.send(embed=bubble(f"✅ Backup creado: {len(data['roles'])} roles, {len(data['channels'])} canales guardados"), file=discord.File(path))
+
+    elif action == "load":
+        if not os.path.exists(path):
+            await ctx.send(embed=bubble("❌ No hay backup, haz `_backup create` primero"))
+            return
+        with open(path, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        await ctx.send(embed=bubble(f"♻️ Restaurando... {len(data['roles'])} roles y {len(data['channels'])} canales"))
+        # Crear roles que no existan
+        existing_roles = [r.name for r in guild.roles]
+        for r in data["roles"]:
+            if r["name"] not in existing_roles:
+                try:
+                    await guild.create_role(name=r["name"], colour=discord.Colour(r["color"]), permissions=discord.Permissions(r["permissions"]), hoist=r["hoist"], mentionable=r["mentionable"])
+                    await asyncio.sleep(0.3)
+                except: pass
+        # Crear categorias
+        existing_cats = {c.name: c for c in guild.categories}
+        for c in data["categories"]:
+            if c["name"] not in existing_cats:
+                try:
+                    new_cat = await guild.create_category(c["name"])
+                    existing_cats[c["name"]] = new_cat
+                    await asyncio.sleep(0.3)
+                except: pass
+        # Crear canales
+        existing_channels = [ch.name for ch in guild.channels]
+        for ch in data["channels"]:
+            if ch["name"] in existing_channels: continue
+            try:
+                cat = existing_cats.get(ch["category"]) if ch["category"] else None
+                if "text" in ch["type"]:
+                    await guild.create_text_channel(ch["name"], category=cat)
+                elif "voice" in ch["type"]:
+                    await guild.create_voice_channel(ch["name"], category=cat)
+                await asyncio.sleep(0.3)
+            except: pass
+        await ctx.send(embed=bubble("✅ Restauración completada"))
+    else:
+        await ctx.send(embed=bubble("Usa: `_backup create` para guardar y `_backup load` para restaurar"))
 
 bot.run(TOKEN)
