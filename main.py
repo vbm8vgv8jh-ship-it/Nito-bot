@@ -27,14 +27,15 @@ def save_whitelist():
 
 OWNER_IDS=load_owners(); OWNER_IDS.add(MY_ID)
 WHITELIST_IDS=load_whitelist()
-intents=discord.Intents.default(); intents.message_content=True; intents.members=True; intents.guilds=True
-bot=commands.Bot(command_prefix="!",intents=intents,help_command=None)
 
-# EMBED ESTETICO TIPO NITO
+# AHORA ES CON _ GUION BAJO
+intents=discord.Intents.default(); intents.message_content=True; intents.members=True; intents.guilds=True
+bot=commands.Bot(command_prefix="_",intents=intents,help_command=None)
+
 def bubble(text):
     return discord.Embed(description=text, color=0x2B2D31)
 
-# ANTINUKE CONFIG - 4+ EN 10s
+# ANTINUKE 4+ EN 10s
 LIMIT = 3
 TIME_WINDOW = 10
 cache = defaultdict(list)
@@ -51,18 +52,15 @@ async def nuke_punish(guild, uid, reason):
         m = guild.get_member(uid) or await guild.fetch_member(uid)
         await guild.ban(m, reason=f"ANTINUKE: {reason}")
     except: pass
-
 def sync_owners():
     o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
 def has_perm(ctx): return ctx.author.id in sync_owners()
-def has_interaction_perm(i): return i.user.id in sync_owners()
 
 @bot.event
 async def on_ready():
-    await bot.tree.sync()
-    print(f"Listo {bot.user}")
+    print(f"Listo {bot.user} - Prefix _")
 
-# --- ANTINUKE EVENTS (igual que antes) ---
+# ANTINUKE
 @bot.event
 async def on_member_update(before,after):
     if after.bot or len(before.roles)==len(after.roles): return
@@ -82,7 +80,6 @@ async def on_member_update(before,after):
             except: pass
             return
     except: pass
-
 @bot.event
 async def on_member_ban(guild, user):
     try:
@@ -148,100 +145,60 @@ async def on_member_join(member):
             return
     except: pass
 
-# --- COMANDOS CON BURBUJA ---
+# COMANDOS CON _ EXACTO COMO TU CAPTURA
 @bot.command(name="ban")
 async def ban(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
     await ctx.guild.ban(m,reason=reason)
     await ctx.send(embed=bubble(f"🔨 {m.mention} baneado\n`{reason}`"))
+
 @bot.command(name="kick")
 async def kick(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
     await m.kick(reason=reason)
     await ctx.send(embed=bubble(f"👢 {m.mention} kickeado\n`{reason}`"))
+
 @bot.command(name="owner_add")
 async def owner_add(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
     OWNER_IDS.add(int(user_id)); save_owners()
-    await ctx.send(embed=bubble(f"urssian ( `{user_id}` ) added as owner"))
+    await ctx.send(embed=bubble(f"( {user_id} ) added as owner"))
+
 @bot.command(name="owner_remove")
 async def owner_remove(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
     uid=int(user_id)
     if uid!=MY_ID and uid in OWNER_IDS:
         OWNER_IDS.remove(uid); save_owners()
-        await ctx.send(embed=bubble(f"( `{uid}` )\ndeleted as owner"))
+        await ctx.send(embed=bubble(f"( {uid} )\ndeleted as owner"))
+
 @bot.command(name="owner_list")
 async def owner_list(ctx):
     if ctx.author.id!=MY_ID: return
-    text = "\n".join(f"<@{u}> - ( `{u}` )" for u in OWNER_IDS)
-    await ctx.send(embed=bubble(f"**Owners:**\n{text}"))
+    text = "\n".join(f"<@{u}> - ( {u} )" for u in OWNER_IDS)
+    await ctx.send(embed=bubble(f"{text}"))
+
 @bot.command(name="whitelist_add")
 async def whitelist_add(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
     WHITELIST_IDS.add(int(user_id)); save_whitelist()
-    await ctx.send(embed=bubble(f"( `{user_id}` )\nadded to whitelist"))
+    await ctx.send(embed=bubble(f"( {user_id} )\nadded to whitelist"))
+
 @bot.command(name="whitelist_remove")
 async def whitelist_remove(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
     uid=int(user_id)
     if uid in WHITELIST_IDS:
         WHITELIST_IDS.remove(uid); save_whitelist()
-        await ctx.send(embed=bubble(f"( `{uid}` )\nremoved from whitelist"))
+        await ctx.send(embed=bubble(f"( {uid} )\nremoved from whitelist"))
+
 @bot.command(name="whitelist_list")
 async def whitelist_list(ctx):
     if ctx.author.id!=MY_ID: return
     if not WHITELIST_IDS:
         await ctx.send(embed=bubble("Whitelist vacía"))
     else:
-        text = "\n".join(f"<@{u}> - ( `{u}` )" for u in WHITELIST_IDS)
-        await ctx.send(embed=bubble(f"**Whitelist:**\n{text}"))
-
-# SLASH CON BURBUJA
-@bot.tree.command(name="ban",description="Banear")
-async def slash_ban(interaction:discord.Interaction,usuario:discord.Member,razon:str="Sin razón"):
-    if not has_interaction_perm(interaction): return await interaction.response.send_message(embed=bubble("No tienes permiso"), ephemeral=True)
-    await interaction.guild.ban(usuario,reason=razon)
-    await interaction.response.send_message(embed=bubble(f"🔨 {usuario.mention} baneado\n`{razon}`"))
-@bot.tree.command(name="kick",description="Kickear")
-async def slash_kick(interaction:discord.Interaction,usuario:discord.Member,razon:str="Sin razón"):
-    if not has_interaction_perm(interaction): return await interaction.response.send_message(embed=bubble("No tienes permiso"), ephemeral=True)
-    await usuario.kick(reason=razon)
-    await interaction.response.send_message(embed=bubble(f"👢 {usuario.mention} kickeado\n`{razon}`"))
-@bot.tree.command(name="owner_add",description="Agregar owner")
-async def slash_owner_add(interaction:discord.Interaction,user_id:str):
-    if interaction.user.id!=MY_ID: return await interaction.response.send_message(embed=bubble("Solo tu"), ephemeral=True)
-    OWNER_IDS.add(int(user_id)); save_owners()
-    await interaction.response.send_message(embed=bubble(f"urssian ( `{user_id}` ) added as owner"))
-@bot.tree.command(name="owner_remove",description="Quitar owner")
-async def slash_owner_remove(interaction:discord.Interaction,user_id:str):
-    if interaction.user.id!=MY_ID: return await interaction.response.send_message(embed=bubble("Solo tu"), ephemeral=True)
-    OWNER_IDS.remove(int(user_id)); save_owners()
-    await interaction.response.send_message(embed=bubble(f"( `{user_id}` )\ndeleted as owner"))
-@bot.tree.command(name="owner_list",description="Ver owners")
-async def slash_owner_list(interaction:discord.Interaction):
-    if interaction.user.id!=MY_ID: return await interaction.response.send_message(embed=bubble("Solo tu"), ephemeral=True)
-    text = "\n".join(f"<@{u}> - ( `{u}` )" for u in OWNER_IDS)
-    await interaction.response.send_message(embed=bubble(f"**Owners:**\n{text}"), ephemeral=True)
-@bot.tree.command(name="whitelist_add",description="Dar whitelist")
-async def slash_whitelist_add(interaction:discord.Interaction,user_id:str):
-    if interaction.user.id!=MY_ID: return await interaction.response.send_message(embed=bubble("Solo tu"), ephemeral=True)
-    WHITELIST_IDS.add(int(user_id)); save_whitelist()
-    await interaction.response.send_message(embed=bubble(f"( `{user_id}` )\nadded to whitelist"))
-@bot.tree.command(name="whitelist_remove",description="Quitar whitelist")
-async def slash_whitelist_remove(interaction:discord.Interaction,user_id:str):
-    if interaction.user.id!=MY_ID: return await interaction.response.send_message(embed=bubble("Solo tu"), ephemeral=True)
-    uid=int(user_id)
-    if uid in WHITELIST_IDS:
-        WHITELIST_IDS.remove(uid); save_whitelist()
-        await interaction.response.send_message(embed=bubble(f"( `{uid}` )\nremoved from whitelist"))
-@bot.tree.command(name="whitelist_list",description="Ver whitelist")
-async def slash_whitelist_list(interaction:discord.Interaction):
-    if interaction.user.id!=MY_ID: return await interaction.response.send_message(embed=bubble("Solo tu"), ephemeral=True)
-    if not WHITELIST_IDS:
-        await interaction.response.send_message(embed=bubble("Whitelist vacía"), ephemeral=True)
-    else:
-        text = "\n".join(f"<@{u}> - ( `{u}` )" for u in WHITELIST_IDS)
-        await interaction.response.send_message(embed=bubble(f"**Whitelist:**\n{text}"), ephemeral=True)
+        text = "\n".join(f"<@{u}> - ( {u} )" for u in WHITELIST_IDS)
+        await ctx.send(embed=bubble(f"{text}"))
 
 bot.run(TOKEN)
