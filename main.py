@@ -38,6 +38,32 @@ def sync_owners():
     o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
 def has_perm(ctx): return ctx.author.id in sync_owners()
 
+# --- NUEVA FUNCION: BACKUP AUTOMATICO CON ENVIO A DM ---
+async def auto_backup(guild):
+    try:
+        path = f"{BACKUP_DIR}/{guild.id}.json"
+        data = {"guild_name": guild.name, "roles": [], "categories": [], "channels": []}
+        for r in reversed(guild.roles):
+            if r.is_default() or r.managed or r.is_bot_managed(): continue
+            data["roles"].append({"name": r.name, "color": r.color.value, "permissions": r.permissions.value, "hoist": r.hoist, "mentionable": r.mentionable})
+        for cat in guild.categories:
+            data["categories"].append({"name": cat.name, "position": cat.position})
+        for ch in guild.channels:
+            if isinstance(ch, discord.CategoryChannel): continue
+            data["channels"].append({"name": ch.name, "type": str(ch.type), "category": ch.category.name if ch.category else None, "position": ch.position})
+        with open(path, "w", encoding="utf-8") as f:
+            json.dump(data, f, indent=4)
+
+        # Mandarlo a tu DM
+        try:
+            user_to_send = await bot.fetch_user(MY_ID)
+            file = discord.File(path, filename=f"backup-AUTO-{guild.name}-{guild.id}.json")
+            await user_to_send.send(f"🚨 **BACKUP AUTOMÁTICO CREADO**\nServer: `{guild.name}`\nSe detectó un intento de nuke y guardé esto antes de banear. Usa `_backup load` para restaurar.", file=file)
+        except Exception as e:
+            print(f"No pude mandar DM del backup: {e}")
+    except Exception as e:
+        print(f"Error auto_backup: {e}")
+
 LIMIT = 3
 TIME_WINDOW = 10
 cache = defaultdict(list)
@@ -48,8 +74,19 @@ def is_spam(uid):
     cache[uid] = [t for t in cache[uid] if now - t < TIME_WINDOW]
     cache[uid].append(now)
     return len(cache[uid]) > LIMIT
+
 async def nuke_punish(guild, uid, reason):
     if is_safe(uid, guild.owner_id): return
+    # --- ANTES DE BANEAR, HACE BACKUP ---
+    try:
+        # Solo hace backup una vez cada 30 seg para no spamear tu DM
+        if not hasattr(nuke_punish, "last_backup"):
+            nuke_punish.last_backup = 0
+        if time.time() - nuke_punish.last_backup > 30:
+            await auto_backup(guild)
+            nuke_punish.last_backup = time.time()
+    except: pass
+
     try:
         m = guild.get_member(uid) or await guild.fetch_member(uid)
         await guild.ban(m, reason=f"ANTINUKE: {reason}")
