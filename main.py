@@ -27,15 +27,15 @@ def save_whitelist():
 
 OWNER_IDS=load_owners(); OWNER_IDS.add(MY_ID)
 WHITELIST_IDS=load_whitelist()
-
-# AHORA ES CON _ GUION BAJO
 intents=discord.Intents.default(); intents.message_content=True; intents.members=True; intents.guilds=True
 bot=commands.Bot(command_prefix="_",intents=intents,help_command=None)
 
 def bubble(text):
     return discord.Embed(description=text, color=0x2B2D31)
+def sync_owners():
+    o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
+def has_perm(ctx): return ctx.author.id in sync_owners()
 
-# ANTINUKE 4+ EN 10s
 LIMIT = 3
 TIME_WINDOW = 10
 cache = defaultdict(list)
@@ -52,15 +52,11 @@ async def nuke_punish(guild, uid, reason):
         m = guild.get_member(uid) or await guild.fetch_member(uid)
         await guild.ban(m, reason=f"ANTINUKE: {reason}")
     except: pass
-def sync_owners():
-    o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
-def has_perm(ctx): return ctx.author.id in sync_owners()
 
 @bot.event
 async def on_ready():
     print(f"Listo {bot.user} - Prefix _")
 
-# ANTINUKE
 @bot.event
 async def on_member_update(before,after):
     if after.bot or len(before.roles)==len(after.roles): return
@@ -145,25 +141,21 @@ async def on_member_join(member):
             return
     except: pass
 
-# COMANDOS CON _ EXACTO COMO TU CAPTURA
 @bot.command(name="ban")
 async def ban(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
     await ctx.guild.ban(m,reason=reason)
     await ctx.send(embed=bubble(f"🔨 {m.mention} baneado\n`{reason}`"))
-
 @bot.command(name="kick")
 async def kick(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
     await m.kick(reason=reason)
     await ctx.send(embed=bubble(f"👢 {m.mention} kickeado\n`{reason}`"))
-
 @bot.command(name="owner_add")
 async def owner_add(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
     OWNER_IDS.add(int(user_id)); save_owners()
     await ctx.send(embed=bubble(f"( {user_id} ) added as owner"))
-
 @bot.command(name="owner_remove")
 async def owner_remove(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
@@ -171,19 +163,16 @@ async def owner_remove(ctx,user_id:str):
     if uid!=MY_ID and uid in OWNER_IDS:
         OWNER_IDS.remove(uid); save_owners()
         await ctx.send(embed=bubble(f"( {uid} )\ndeleted as owner"))
-
 @bot.command(name="owner_list")
 async def owner_list(ctx):
     if ctx.author.id!=MY_ID: return
     text = "\n".join(f"<@{u}> - ( {u} )" for u in OWNER_IDS)
     await ctx.send(embed=bubble(f"{text}"))
-
 @bot.command(name="whitelist_add")
 async def whitelist_add(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
     WHITELIST_IDS.add(int(user_id)); save_whitelist()
     await ctx.send(embed=bubble(f"( {user_id} )\nadded to whitelist"))
-
 @bot.command(name="whitelist_remove")
 async def whitelist_remove(ctx,user_id:str):
     if ctx.author.id!=MY_ID: return
@@ -191,7 +180,6 @@ async def whitelist_remove(ctx,user_id:str):
     if uid in WHITELIST_IDS:
         WHITELIST_IDS.remove(uid); save_whitelist()
         await ctx.send(embed=bubble(f"( {uid} )\nremoved from whitelist"))
-
 @bot.command(name="whitelist_list")
 async def whitelist_list(ctx):
     if ctx.author.id!=MY_ID: return
@@ -200,5 +188,33 @@ async def whitelist_list(ctx):
     else:
         text = "\n".join(f"<@{u}> - ( {u} )" for u in WHITELIST_IDS)
         await ctx.send(embed=bubble(f"{text}"))
+
+# PUBLICOS PARA TODOS
+@bot.command(name="avatar")
+async def avatar(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    embed = bubble(f"**Avatar de {member.name}**\n( {member.id} )")
+    embed.set_image(url=member.display_avatar.url)
+    await ctx.send(embed=embed)
+
+@bot.command(name="userinfo")
+async def userinfo(ctx, member: discord.Member = None):
+    member = member or ctx.author
+    created = discord.utils.format_dt(member.created_at, "R")
+    joined = discord.utils.format_dt(member.joined_at, "R") if member.joined_at else "No"
+    roles = ", ".join([r.mention for r in member.roles[1:][::-1][:8]]) or "Ninguno"
+    desc = f"**User:** {member.mention} - ( {member.id} )\n**Creado:** {created}\n**Se unió:** {joined}\n**Roles [{len(member.roles)-1}]:** {roles}"
+    embed = bubble(desc)
+    embed.set_thumbnail(url=member.display_avatar.url)
+    await ctx.send(embed=embed)
+
+@bot.command(name="serverinfo")
+async def serverinfo(ctx):
+    g = ctx.guild
+    desc = f"**Server:** {g.name}\n**ID:** ( {g.id} )\n**Owner:** <@{g.owner_id}> - ( {g.owner_id} )\n**Miembros:** {g.member_count}\n**Canales:** {len(g.channels)} | **Roles:** {len(g.roles)}\n**Boosts:** {g.premium_subscription_count}\n**Creado:** {discord.utils.format_dt(g.created_at, 'R')}"
+    embed = bubble(desc)
+    if g.icon:
+        embed.set_thumbnail(url=g.icon.url)
+    await ctx.send(embed=embed)
 
 bot.run(TOKEN)
