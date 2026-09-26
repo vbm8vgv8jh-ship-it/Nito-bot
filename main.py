@@ -192,30 +192,58 @@ async def whitelist_list(ctx):
         text = "\n".join(f"<@{u}> - ( {u} )" for u in WHITELIST_IDS)
         await ctx.send(embed=bubble(f"{text}"))
 
-# --- PUBLICOS ---
+# --- PUBLICOS ESTETICOS ---
 @bot.command(name="avatar")
 async def avatar(ctx, member: discord.Member = None):
     member = member or ctx.author
-    embed = bubble(f"**Avatar de {member.name}**\n( {member.id} )")
+    embed = discord.Embed(description=f"**Avatar de {member.name}**", color=0x2B2D31)
     embed.set_image(url=member.display_avatar.url)
     await ctx.send(embed=embed)
+
 @bot.command(name="userinfo")
 async def userinfo(ctx, member: discord.Member = None):
     member = member or ctx.author
-    created = discord.utils.format_dt(member.created_at, "R")
-    joined = discord.utils.format_dt(member.joined_at, "R") if member.joined_at else "No"
-    roles = ", ".join([r.mention for r in member.roles[1:][::-1][:8]]) or "Ninguno"
-    desc = f"**User:** {member.mention} - ( {member.id} )\n**Creado:** {created}\n**Se unió:** {joined}\n**Roles [{len(member.roles)-1}]:** {roles}"
-    embed = bubble(desc)
+    created = discord.utils.format_dt(member.created_at, "F")
+    joined = discord.utils.format_dt(member.joined_at, "F") if member.joined_at else "Desconocido"
+    ago_created = discord.utils.format_dt(member.created_at, "R")
+    ago_joined = discord.utils.format_dt(member.joined_at, "R") if member.joined_at else ""
+    roles = member.roles[1:]
+    roles_str = " ".join([r.mention for r in roles[::-1][:15]]) if roles else "`Sin roles`"
+    if len(roles) > 15:
+        roles_str += f" `+{len(roles)-15} más`"
+    embed = discord.Embed(color=0x2B2D31)
+    embed.set_author(name=f"Información de {member.name}", icon_url=member.display_avatar.url)
     embed.set_thumbnail(url=member.display_avatar.url)
+    embed.add_field(name="👤 Usuario", value=f"{member.mention}\n`{member.id}`", inline=True)
+    embed.add_field(name="🏷️ Nick", value=f"{member.display_name}", inline=True)
+    embed.add_field(name="🤖 Bot", value="Sí" if member.bot else "No", inline=True)
+    embed.add_field(name="📅 Cuenta creada", value=f"{created}\n{ago_created}", inline=False)
+    embed.add_field(name="📥 Se unió", value=f"{joined}\n{ago_joined}", inline=False)
+    embed.add_field(name=f"🎭 Roles [{len(roles)}]", value=roles_str, inline=False)
+    embed.set_footer(text=f"Solicitado por {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
     await ctx.send(embed=embed)
+
 @bot.command(name="serverinfo")
 async def serverinfo(ctx):
     g = ctx.guild
-    desc = f"**Server:** {g.name}\n**ID:** ( {g.id} )\n**Owner:** <@{g.owner_id}> - ( {g.owner_id} )\n**Miembros:** {g.member_count}\n**Canales:** {len(g.channels)} | **Roles:** {len(g.roles)}\n**Boosts:** {g.premium_subscription_count}\n**Creado:** {discord.utils.format_dt(g.created_at, 'R')}"
-    embed = bubble(desc)
+    owner = g.owner or await g.fetch_member(g.owner_id)
+    created = discord.utils.format_dt(g.created_at, "F")
+    ago = discord.utils.format_dt(g.created_at, "R")
+    embed = discord.Embed(color=0x2B2D31)
     if g.icon:
+        embed.set_author(name=g.name, icon_url=g.icon.url)
         embed.set_thumbnail(url=g.icon.url)
+    else:
+        embed.set_author(name=g.name)
+    embed.add_field(name="👑 Owner", value=f"{owner.mention}\n`{owner.id}`", inline=True)
+    embed.add_field(name="🆔 ID", value=f"`{g.id}`", inline=True)
+    embed.add_field(name="📅 Creado", value=f"{ago}", inline=True)
+    embed.add_field(name="👥 Miembros", value=f"**Total:** {g.member_count}\n**Humanos:** {len([m for m in g.members if not m.bot])}\n**Bots:** {len([m for m in g.members if m.bot])}", inline=True)
+    embed.add_field(name="📊 Canales", value=f"**Texto:** {len(g.text_channels)}\n**Voz:** {len(g.voice_channels)}\n**Categorias:** {len(g.categories)}", inline=True)
+    embed.add_field(name="✨ Extras", value=f"**Roles:** {len(g.roles)}\n**Boosts:** {g.premium_subscription_count}\n**Emojis:** {len(g.emojis)}", inline=True)
+    embed.set_footer(text=f"Solicitado por {ctx.author.name} • {created}", icon_url=ctx.author.display_avatar.url)
+    if g.banner:
+        embed.set_image(url=g.banner.url)
     await ctx.send(embed=embed)
 
 # --- BACKUP SYSTEM ---
@@ -224,35 +252,19 @@ async def backup(ctx, action: str = None):
     if not has_perm(ctx): return
     guild = ctx.guild
     path = f"{BACKUP_DIR}/{guild.id}.json"
-
     if action == "create":
-        data = {
-            "guild_name": guild.name,
-            "roles": [],
-            "categories": [],
-            "channels": []
-        }
+        data = {"guild_name": guild.name, "roles": [], "categories": [], "channels": []}
         for r in reversed(guild.roles):
             if r.is_default() or r.managed or r.is_bot_managed(): continue
-            data["roles"].append({
-                "name": r.name, "color": r.color.value,
-                "permissions": r.permissions.value, "hoist": r.hoist,
-                "mentionable": r.mentionable
-            })
+            data["roles"].append({"name": r.name, "color": r.color.value, "permissions": r.permissions.value, "hoist": r.hoist, "mentionable": r.mentionable})
         for cat in guild.categories:
             data["categories"].append({"name": cat.name, "position": cat.position})
         for ch in guild.channels:
             if isinstance(ch, discord.CategoryChannel): continue
-            data["channels"].append({
-                "name": ch.name, "type": str(ch.type),
-                "category": ch.category.name if ch.category else None,
-                "position": ch.position,
-                "topic": getattr(ch, 'topic', None)
-            })
+            data["channels"].append({"name": ch.name, "type": str(ch.type), "category": ch.category.name if ch.category else None, "position": ch.position, "topic": getattr(ch, 'topic', None)})
         with open(path, "w", encoding="utf-8") as f:
             json.dump(data, f, indent=4)
         await ctx.send(embed=bubble(f"✅ Backup creado: {len(data['roles'])} roles, {len(data['channels'])} canales guardados"), file=discord.File(path))
-
     elif action == "load":
         if not os.path.exists(path):
             await ctx.send(embed=bubble("❌ No hay backup, haz `_backup create` primero"))
@@ -260,7 +272,6 @@ async def backup(ctx, action: str = None):
         with open(path, "r", encoding="utf-8") as f:
             data = json.load(f)
         await ctx.send(embed=bubble(f"♻️ Restaurando... {len(data['roles'])} roles y {len(data['channels'])} canales"))
-        # Crear roles que no existan
         existing_roles = [r.name for r in guild.roles]
         for r in data["roles"]:
             if r["name"] not in existing_roles:
@@ -268,7 +279,6 @@ async def backup(ctx, action: str = None):
                     await guild.create_role(name=r["name"], colour=discord.Colour(r["color"]), permissions=discord.Permissions(r["permissions"]), hoist=r["hoist"], mentionable=r["mentionable"])
                     await asyncio.sleep(0.3)
                 except: pass
-        # Crear categorias
         existing_cats = {c.name: c for c in guild.categories}
         for c in data["categories"]:
             if c["name"] not in existing_cats:
@@ -277,7 +287,6 @@ async def backup(ctx, action: str = None):
                     existing_cats[c["name"]] = new_cat
                     await asyncio.sleep(0.3)
                 except: pass
-        # Crear canales
         existing_channels = [ch.name for ch in guild.channels]
         for ch in data["channels"]:
             if ch["name"] in existing_channels: continue
