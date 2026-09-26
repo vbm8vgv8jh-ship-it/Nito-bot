@@ -305,10 +305,8 @@ async def estado(ctx):
         return
     embed = discord.Embed(color=0x2B2D31)
     embed.set_author(name=f"Estado de {ctx.guild.name}", icon_url=ctx.guild.icon.url if ctx.guild.icon else None)
-    embed.set_thumbnail(url=bot.user.display_avatar.url)
-    embed.add_field(name="🛡️ Antinuke", value="```🟢 ACTIVO\nProtege: Bans, Kicks\nCanales, Roles, Admin```", inline=True)
-    embed.add_field(name="🤖 AntiBot", value="```🟢 ACTIVO\nBloquea bots no\nAutorizados```", inline=True)
-    embed.add_field(name="📊 Stats", value=f"```Owners: {len(OWNER_IDS)}\nWhitelist: {len(WHITELIST_IDS)}\nEventos: {len(cache)}```", inline=False)
+    embed.add_field(name="🛡️ AntiNuke", value="🟢 ACTIVO", inline=True)
+    embed.add_field(name="🤖 AntiBot", value="🟢 ACTIVO", inline=True)
     embed.set_footer(text=f"Solicitado por {ctx.author.name}", icon_url=ctx.author.display_avatar.url)
     await ctx.send(embed=embed)
 
