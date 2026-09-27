@@ -231,17 +231,21 @@ async def owner_add(ctx, user_id: str):
         e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
-# ===== WHITELIST_ADD CON FAKE PARA OTROS =====
+# ===== WHITELIST_ADD FINAL COMO QUIERES =====
 @bot.command(name="whitelist_add")
 async def whitelist_add(ctx, user_id: str = None):
-    if ctx.author.id!= MY_ID:
+    # 1. Sin ID -> FAKE para todos
+    if not user_id:
         e = discord.Embed(color=0x2b2d31)
         e.set_author(name="Command: whitelist_add", icon_url=bot.user.display_avatar.url if bot.user.display_avatar else None)
         e.description = "Adds a user to the pings or roles whitelist\n\n**Syntax:** `,whitelist_add | pings, roles y all.`\n**Example:** `,whitelist_add (id) R, P o All`"
         await ctx.send(embed=e)
         return
-    if not user_id:
-        return await ctx.send("Pon id: `_whitelist_add 123`")
+
+    # 2. Con ID -> solo tu, y sale el real como siempre
+    if ctx.author.id!= MY_ID:
+        return
+
     try:
         uid = int(user_id)
         u = bot.get_user(uid) or await bot.fetch_user(uid)
@@ -251,7 +255,8 @@ async def whitelist_add(ctx, user_id: str = None):
             uid = int(user_id)
             name = user_id
         except:
-            return await ctx.send("ID inválido")
+            return await ctx.send("ID invalido")
+
     WHITELIST_IDS.add(uid)
     save_whitelist()
     body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`)\n━━━━━━━━━━━━━━━━━━━━"
