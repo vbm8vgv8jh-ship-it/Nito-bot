@@ -7,6 +7,8 @@ TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("TOKEN") or os.getenv("DISCO
 MY_ID = 1310357536087740450
 OWNER_FILE="owners.json"
 WHITELIST_FILE="whitelist.json"
+WHITELIST_PINGS_FILE="whitelist_pings.json"
+WHITELIST_ROLES_FILE="whitelist_roles.json"
 BACKUP_DIR="backups"
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
@@ -26,9 +28,21 @@ def load_whitelist():
     return set()
 def save_whitelist():
     with open(WHITELIST_FILE,"w") as f: json.dump(list(WHITELIST_IDS),f)
+def load_set(path):
+    if os.path.exists(path):
+        try:
+            with open(path,"r") as f: return set(map(int,json.load(f)))
+        except: return set()
+    return set()
+def save_set(path, data):
+    with open(path,"w") as f: json.dump(list(data), f)
 
 OWNER_IDS=load_owners(); OWNER_IDS.add(MY_ID)
 WHITELIST_IDS=load_whitelist()
+WHITELIST_PINGS=load_set(WHITELIST_PINGS_FILE)
+WHITELIST_ROLES=load_set(WHITELIST_ROLES_FILE)
+WHITELIST_PINGS.update(WHITELIST_IDS)
+WHITELIST_ROLES.update(WHITELIST_IDS)
 
 intents=discord.Intents.default()
 intents.message_content=True
@@ -39,12 +53,12 @@ bot=commands.Bot(command_prefix="_",intents=intents,help_command=None)
 def sync_owners():
     o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
 def has_perm(ctx): return ctx.author.id in sync_owners()
+def is_safe(uid, owner_id=None):
+    return uid==MY_ID or uid in OWNER_IDS or uid in WHITELIST_PINGS or uid in WHITELIST_ROLES or uid in WHITELIST_IDS or uid==owner_id
 
 LIMIT=3
 TIME_WINDOW=10
 cache=defaultdict(list)
-def is_safe(uid, owner_id=None):
-    return uid==MY_ID or uid in OWNER_IDS or uid in WHITELIST_IDS or uid==owner_id
 def is_spam(uid):
     now=time.time()
     cache[uid]=[t for t in cache[uid] if now-t < TIME_WINDOW]
@@ -196,19 +210,21 @@ async def owner_list(ctx):
 @bot.command(name="whitelist_list")
 async def whitelist_list(ctx):
     if ctx.author.id!=MY_ID: return
-    if not WHITELIST_IDS:
-        body = "━━━━━━━━━━━━━━━━━━━━\n`Vacía`\n━━━━━━━━━━━━━━━━━━━━"
-    else:
+    def fmt(ids):
+        if not ids: return "`Vacía`"
         lines=[]
-        for uid in WHITELIST_IDS:
+        for uid in ids:
             try:
                 u = bot.get_user(uid) or await bot.fetch_user(uid)
                 name = u.name if u else f"ID {uid}"
             except:
                 name = f"ID {uid}"
             lines.append(f"{name} (`{uid}`)")
-        body = "━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines) + "\n━━━━━━━━━━━━━━━━━━━━"
-    e = discord.Embed(description=f"**Whitelist List ({len(WHITELIST_IDS)})**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        return "\n".join(lines)
+    p_txt = fmt(WHITELIST_PINGS)
+    r_txt = fmt(WHITELIST_ROLES)
+    body = f"━━━━━━━━━━━━━━━━━━━━\n**PINGS [{len(WHITELIST_PINGS)}]:**\n{p_txt}\n\n**ROL [{len(WHITELIST_ROLES)}]:**\n{r_txt}\n━━━━━━━━━━━━━━━━━━━━"
+    e = discord.Embed(description=f"**Whitelist List**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
     if ctx.guild.icon:
         e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
@@ -231,39 +247,74 @@ async def owner_add(ctx, user_id: str):
         e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
-# ===== WHITELIST_ADD FINAL COMO QUIERES =====
 @bot.command(name="whitelist_add")
-async def whitelist_add(ctx, user_id: str = None):
-    # 1. Sin ID -> FAKE para todos
+async def whitelist_add(ctx, user_id: str = None, tipo: str = None):
     if not user_id:
         e = discord.Embed(color=0x2b2d31)
         e.set_author(name="Command: whitelist_add", icon_url=bot.user.display_avatar.url if bot.user.display_avatar else None)
-        e.description = "Adds a user to the pings or roles whitelist\n\n**Syntax:** `,whitelist_add | pings, roles y all.`\n**Example:** `,whitelist_add (id) R, P o All`"
+        e.description = "Adds a user to the pings or roles whitelist\n\n**Syntax:** `,whitelist_add | pings, rol`\n**Example:** `,whitelist_add (id) p, r`"
         await ctx.send(embed=e)
         return
-
-    # 2. Con ID -> solo tu, y sale el real como siempre
     if ctx.author.id!= MY_ID:
         return
-
     try:
         uid = int(user_id)
         u = bot.get_user(uid) or await bot.fetch_user(uid)
         name = u.name if u else user_id
     except:
-        try:
-            uid = int(user_id)
-            name = user_id
-        except:
-            return await ctx.send("ID invalido")
-
-    WHITELIST_IDS.add(uid)
-    save_whitelist()
-    body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`)\n━━━━━━━━━━━━━━━━━━━━"
+        return await ctx.send("ID invalido")
+    if not tipo:
+        e = discord.Embed(description=f"**Elige tipo**\n\n━━━━━━━━━━━━━━━━━━━━\n`_whitelist_add {uid} pings`\n`_whitelist_add {uid} rol`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+        await ctx.send(embed=e)
+        return
+    t = tipo.lower()
+    if t in ["pings", "ping", "p"]:
+        WHITELIST_PINGS.add(uid)
+        save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
+        body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`) → **PINGS**\n━━━━━━━━━━━━━━━━━━━━"
+    elif t in ["rol", "roles", "r"]:
+        WHITELIST_ROLES.add(uid)
+        save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
+        body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`) → **ROL**\n━━━━━━━━━━━━━━━━━━━━"
+    else:
+        return await ctx.send("Usa `p, r` | `pings, rol`")
     e = discord.Embed(description=f"**Whitelist Added**\n\n{body}", color=0x2b2d31)
     if ctx.guild.icon:
         e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
+
+@bot.command(name="whitelist_remove")
+async def whitelist_remove(ctx, user_id: str = None, tipo: str = None):
+    if ctx.author.id!=MY_ID: return
+    if not user_id:
+        e = discord.Embed(color=0x2b2d31)
+        e.set_author(name="Command: whitelist_remove", icon_url=bot.user.display_avatar.url if bot.user.display_avatar else None)
+        e.description = "Removes a user from the whitelist\n\n**Syntax:** `,whitelist_remove | pings, rol`\n**Example:** `,whitelist_remove (id) p, r`"
+        await ctx.send(embed=e)
+        return
+    try:
+        uid=int(user_id)
+    except:
+        return await ctx.send("ID invalido")
+    if not tipo:
+        e = discord.Embed(description=f"**Elige tipo**\n\n━━━━━━━━━━━━━━━━━━━━\n`_whitelist_remove {uid} p`\n`_whitelist_remove {uid} r`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+        await ctx.send(embed=e)
+        return
+    t = tipo.lower()
+    removed=False
+    if t in ["pings","ping","p"] and uid in WHITELIST_PINGS:
+        WHITELIST_PINGS.remove(uid); save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS); removed=True
+        label="PINGS"
+    elif t in ["rol","roles","r"] and uid in WHITELIST_ROLES:
+        WHITELIST_ROLES.remove(uid); save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES); removed=True
+        label="ROL"
+    if removed:
+        body = f"━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed from **{label}**\n━━━━━━━━━━━━━━━━━━━━"
+        e = discord.Embed(description=f"**Whitelist Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
+        await ctx.send(embed=e)
+    else:
+        await ctx.send(f"`{uid}` no estaba en {tipo}")
 
 @bot.command(name="userinfo")
 async def userinfo(ctx, member: discord.Member = None):
@@ -391,17 +442,6 @@ async def owner_remove(ctx,user_id:str):
         OWNER_IDS.remove(uid); save_owners()
         body = f"━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━"
         e = discord.Embed(description=f"**Owner Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
-        await ctx.send(embed=e)
-
-@bot.command(name="whitelist_remove")
-async def whitelist_remove(ctx,user_id:str):
-    if ctx.author.id!=MY_ID: return
-    uid=int(user_id)
-    if uid in WHITELIST_IDS:
-        WHITELIST_IDS.remove(uid); save_whitelist()
-        body = f"━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Whitelist Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
         if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
         await ctx.send(embed=e)
 
