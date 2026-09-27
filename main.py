@@ -120,14 +120,10 @@ async def on_member_update(before,after):
         async for entry in after.guild.audit_logs(limit=5,action=discord.AuditLogAction.member_role_update):
             if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>15: continue
             if entry.target.id!=after.id: continue
-            # FIX DEFINITIVO PARA _r_add
-            if bot.user and entry.user.id == bot.user.id:
-                return
-            if entry.user.id == MY_ID:
-                return
+            if bot.user and entry.user.id == bot.user.id: return
+            if entry.user.id == MY_ID: return
             reason = (entry.reason or "").lower()
-            if "r_add" in reason or "r_remove" in reason:
-                return
+            if "r_add" in reason or "r_remove" in reason: return
             if is_role_allowed(after.guild, entry.user.id, after.guild.owner_id): return
             try: await after.edit(roles=before.roles, reason="AntiRole")
             except: pass
@@ -248,7 +244,7 @@ async def on_message(message):
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
     if not has_perm(ctx): return
     if not user_id or not role_name:
-        return await ctx.send("**Uso:** `_r_add (id usuario) (nombre del rol)`\nEj: `_r_add 123456789 Admin`")
+        return await ctx.send(embed=discord.Embed(description="```\nSyntax: _r_add (id) role name\n```", color=0x2b2d31))
     try:
         uid = int(user_id)
         member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
@@ -272,7 +268,7 @@ async def r_add(ctx, user_id: str = None, *, role_name: str = None):
     if member.top_role.position >= me.top_role.position and member.id!= ctx.guild.owner_id:
         return await ctx.send(f"❌ No puedo editar a {member.mention} porque su rol más alto `{member.top_role.name}` es más alto que el mío.")
     try:
-        await member.add_roles(role, reason=f"r_add por {ctx.author}")
+        await member.add_roles(role, reason=f"r_add por {ctx.author} - bypass")
         await asyncio.sleep(0.7)
         member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
         if role in member.roles:
@@ -289,7 +285,7 @@ async def r_add(ctx, user_id: str = None, *, role_name: str = None):
 async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
     if not has_perm(ctx): return
     if not user_id or not role_name:
-        return await ctx.send("**Uso:** `_r_remove (id usuario) (nombre del rol)`")
+        return await ctx.send(embed=discord.Embed(description="```\nSyntax: _r_remove (id) role name\n```", color=0x2b2d31))
     try:
         uid = int(user_id)
         member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
@@ -309,7 +305,7 @@ async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
     if role.position >= me.top_role.position:
         return await ctx.send(f"❌ Mi rol `{me.top_role.name}` está debajo de `{role.name}`. Súbeme.")
     try:
-        await member.remove_roles(role, reason=f"r_remove por {ctx.author}")
+        await member.remove_roles(role, reason=f"r_remove por {ctx.author} - bypass")
         e = discord.Embed(description=f"**Rol Removido**\n\n━━━━━━━━━━━━━━━━━━━━\n👤 {member.mention} (`{member.id}`)\n🎭 `{role.name}`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
         await ctx.send(embed=e)
     except Exception as ex:
@@ -432,37 +428,42 @@ async def owner_add(ctx, user_id: str):
     if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
+# FORMATO NUEVO: ID add wh r / ID add wh p
 @bot.command(name="whitelist_add")
 async def whitelist_add(ctx, user_id: str = None, tipo: str = None):
     if ctx.author.id!= MY_ID: return
-    if not user_id: return await ctx.send("Uso: `_whitelist_add (id) p` o `r`")
+    if not user_id or not tipo:
+        return await ctx.send(embed=discord.Embed(description="```\nSyntax: _whitelist_add (id) r/p\n```", color=0x2b2d31))
     try: uid = int(user_id)
-    except: return await ctx.send("ID invalido")
-    if not tipo: return await ctx.send(f"`_whitelist_add {uid} p` → pings/links\n`_whitelist_add {uid} r` → dar roles")
-    t = tipo.lower()
-    if t in ["pings","ping","p"]:
+    except: return await ctx.send(embed=discord.Embed(description="```\nID invalido\n```", color=0x2b2d31))
+    if tipo.lower() in ["pings","ping","p"]:
         WHITELIST_PINGS.add(uid); save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
-        await ctx.send(f"✅ {uid} agregado a PINGS")
-    elif t in ["rol","roles","r"]:
+        await ctx.send(embed=discord.Embed(description=f"```\n{uid} add wh p\n```", color=0x2b2d31))
+    elif tipo.lower() in ["rol","roles","r"]:
         WHITELIST_ROLES.add(uid); save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
-        await ctx.send(f"✅ {uid} agregado a ROL")
-    else: await ctx.send("Usa `p` o `r`")
+        await ctx.send(embed=discord.Embed(description=f"```\n{uid} add wh r\n```", color=0x2b2d31))
+    else:
+        await ctx.send(embed=discord.Embed(description="```\nUsa p o r\n```", color=0x2b2d31))
 
 @bot.command(name="whitelist_remove")
 async def whitelist_remove(ctx, user_id: str = None, tipo: str = None):
     if ctx.author.id!=MY_ID: return
-    if not user_id: return await ctx.send("Uso: `_whitelist_remove (id) p, r`")
+    if not user_id or not tipo:
+        return await ctx.send(embed=discord.Embed(description="```\nSyntax: _whitelist_remove (id) r/p\n```", color=0x2b2d31))
     try: uid=int(user_id)
-    except: return await ctx.send("ID invalido")
-    if not tipo: return await ctx.send(f"`_whitelist_remove {uid} p` o `r`")
-    t = tipo.lower()
-    if t in ["pings","ping","p"] and uid in WHITELIST_PINGS:
-        WHITELIST_PINGS.remove(uid); save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
-        await ctx.send(f"`{uid}` removido de PINGS")
-    elif t in ["rol","roles","r"] and uid in WHITELIST_ROLES:
-        WHITELIST_ROLES.remove(uid); save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
-        await ctx.send(f"`{uid}` removido de ROL")
-    else: await ctx.send(f"`{uid}` no estaba en {tipo}")
+    except: return await ctx.send(embed=discord.Embed(description="```\nID invalido\n```", color=0x2b2d31))
+    if tipo.lower() in ["pings","ping","p"]:
+        if uid in WHITELIST_PINGS:
+            WHITELIST_PINGS.remove(uid); save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
+            await ctx.send(embed=discord.Embed(description=f"```\n{uid} remove wh p\n```", color=0x2b2d31))
+        else:
+            await ctx.send(embed=discord.Embed(description=f"```\n{uid} no estaba en wh p\n```", color=0x2b2d31))
+    elif tipo.lower() in ["rol","roles","r"]:
+        if uid in WHITELIST_ROLES:
+            WHITELIST_ROLES.remove(uid); save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
+            await ctx.send(embed=discord.Embed(description=f"```\n{uid} remove wh r\n```", color=0x2b2d31))
+        else:
+            await ctx.send(embed=discord.Embed(description=f"```\n{uid} no estaba en wh r\n```", color=0x2b2d31))
 
 @bot.command(name="userinfo")
 async def userinfo(ctx, member: discord.Member = None):
