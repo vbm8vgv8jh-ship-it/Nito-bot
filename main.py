@@ -176,7 +176,6 @@ async def on_member_join(member):
             return
     except: pass
 
-# ===== LISTAS CON FOTO SERVER Y FORMATO nombre (id) =====
 @bot.command(name="owner_list")
 async def owner_list(ctx):
     if ctx.author.id!=MY_ID: return
@@ -214,7 +213,6 @@ async def whitelist_list(ctx):
         e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
-# ===== ADD SIN REQUESTED BY =====
 @bot.command(name="owner_add")
 async def owner_add(ctx, user_id: str):
     if ctx.author.id!= MY_ID: return
@@ -233,16 +231,27 @@ async def owner_add(ctx, user_id: str):
         e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
+# ===== WHITELIST_ADD CON FAKE PARA OTROS =====
 @bot.command(name="whitelist_add")
-async def whitelist_add(ctx, user_id: str):
-    if ctx.author.id!= MY_ID: return
+async def whitelist_add(ctx, user_id: str = None):
+    if ctx.author.id!= MY_ID:
+        e = discord.Embed(color=0x2b2d31)
+        e.set_author(name="Command: whitelist_add", icon_url=bot.user.display_avatar.url if bot.user.display_avatar else None)
+        e.description = "Adds a user to the pings or roles whitelist\n\n**Syntax:** `,whitelist_add | pings, roles y all.`\n**Example:** `,whitelist_add (id) R, P o All`"
+        await ctx.send(embed=e)
+        return
+    if not user_id:
+        return await ctx.send("Pon id: `_whitelist_add 123`")
     try:
         uid = int(user_id)
         u = bot.get_user(uid) or await bot.fetch_user(uid)
         name = u.name if u else user_id
     except:
-        uid = int(user_id)
-        name = user_id
+        try:
+            uid = int(user_id)
+            name = user_id
+        except:
+            return await ctx.send("ID inválido")
     WHITELIST_IDS.add(uid)
     save_whitelist()
     body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`)\n━━━━━━━━━━━━━━━━━━━━"
@@ -251,7 +260,6 @@ async def whitelist_add(ctx, user_id: str):
         e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
-# ===== INFO COMPLETA =====
 @bot.command(name="userinfo")
 async def userinfo(ctx, member: discord.Member = None):
     m = member or ctx.author
