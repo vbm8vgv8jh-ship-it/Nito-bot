@@ -20,14 +20,7 @@ def load_owners():
     return {MY_ID}
 def save_owners():
     with open(OWNER_FILE,"w") as f: json.dump(list(OWNER_IDS),f)
-def load_whitelist():
-    if os.path.exists(WHITELIST_FILE):
-        try:
-            with open(WHITELIST_FILE,"r") as f: return set(map(int,json.load(f)))
-        except: return set()
-    return set()
-def save_whitelist():
-    with open(WHITELIST_FILE,"w") as f: json.dump(list(WHITELIST_IDS),f)
+
 def load_set(path):
     if os.path.exists(path):
         try:
@@ -38,11 +31,9 @@ def save_set(path, data):
     with open(path,"w") as f: json.dump(list(data), f)
 
 OWNER_IDS=load_owners(); OWNER_IDS.add(MY_ID)
-WHITELIST_IDS=load_whitelist()
+WHITELIST_IDS=set()
 WHITELIST_PINGS=load_set(WHITELIST_PINGS_FILE)
 WHITELIST_ROLES=load_set(WHITELIST_ROLES_FILE)
-WHITELIST_PINGS.update(WHITELIST_IDS)
-WHITELIST_ROLES.update(WHITELIST_IDS)
 
 intents=discord.Intents.default()
 intents.message_content=True
@@ -54,7 +45,7 @@ def sync_owners():
     o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
 def has_perm(ctx): return ctx.author.id in sync_owners()
 def is_safe(uid, owner_id=None):
-    return uid==MY_ID or uid in OWNER_IDS or uid in WHITELIST_PINGS or uid in WHITELIST_ROLES or uid in WHITELIST_IDS or uid==owner_id
+    return uid==MY_ID or uid in OWNER_IDS or uid in WHITELIST_PINGS or uid in WHITELIST_ROLES or uid==owner_id
 
 LIMIT=3
 TIME_WINDOW=10
@@ -214,11 +205,8 @@ async def whitelist_list(ctx):
         if not ids: return "`Vacía`"
         lines=[]
         for uid in ids:
-            try:
-                u = bot.get_user(uid) or await bot.fetch_user(uid)
-                name = u.name if u else f"ID {uid}"
-            except:
-                name = f"ID {uid}"
+            u = bot.get_user(uid)
+            name = u.name if u else f"ID {uid}"
             lines.append(f"{name} (`{uid}`)")
         return "\n".join(lines)
     p_txt = fmt(WHITELIST_PINGS)
@@ -302,12 +290,11 @@ async def whitelist_remove(ctx, user_id: str = None, tipo: str = None):
         return
     t = tipo.lower()
     removed=False
+    label=""
     if t in ["pings","ping","p"] and uid in WHITELIST_PINGS:
-        WHITELIST_PINGS.remove(uid); save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS); removed=True
-        label="PINGS"
+        WHITELIST_PINGS.remove(uid); save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS); removed=True; label="PINGS"
     elif t in ["rol","roles","r"] and uid in WHITELIST_ROLES:
-        WHITELIST_ROLES.remove(uid); save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES); removed=True
-        label="ROL"
+        WHITELIST_ROLES.remove(uid); save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES); removed=True; label="ROL"
     if removed:
         body = f"━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed from **{label}**\n━━━━━━━━━━━━━━━━━━━━"
         e = discord.Embed(description=f"**Whitelist Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
