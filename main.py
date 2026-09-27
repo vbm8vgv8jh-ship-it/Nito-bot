@@ -117,9 +117,17 @@ async def on_member_update(before,after):
     risky=[r for r in added if r.permissions.administrator or r.permissions.ban_members or r.permissions.kick_members or r.permissions.manage_roles or r.permissions.manage_guild or r.permissions.manage_channels]
     if not risky: return
     try:
-        async for entry in after.guild.audit_logs(limit=3,action=discord.AuditLogAction.member_role_update):
-            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
+        async for entry in after.guild.audit_logs(limit=5,action=discord.AuditLogAction.member_role_update):
+            if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>15: continue
             if entry.target.id!=after.id: continue
+            # FIX DEFINITIVO PARA _r_add
+            if bot.user and entry.user.id == bot.user.id:
+                return
+            if entry.user.id == MY_ID:
+                return
+            reason = (entry.reason or "").lower()
+            if "r_add" in reason or "r_remove" in reason:
+                return
             if is_role_allowed(after.guild, entry.user.id, after.guild.owner_id): return
             try: await after.edit(roles=before.roles, reason="AntiRole")
             except: pass
@@ -236,8 +244,6 @@ async def on_message(message):
         return
     await bot.process_commands(message)
 
-# ===== COMANDOS ARREGLADOS =====
-
 @bot.command(name="r_add")
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
     if not has_perm(ctx): return
@@ -248,17 +254,14 @@ async def r_add(ctx, user_id: str = None, *, role_name: str = None):
         member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
     except:
         return await ctx.send(f"❌ No encontré al usuario `{user_id}`")
-
     if member.id == ctx.guild.owner_id:
-        return await ctx.send("❌ No puedo dar/quitar roles al **owner del servidor** (limitación de Discord). Esto solo funciona con miembros normales.")
-
+        return await ctx.send("❌ No puedo dar/quitar roles al **owner del servidor** (limitación de Discord).")
     role = discord.utils.find(lambda r: r.name.lower() == role_name.lower().strip(), ctx.guild.roles)
     if not role:
         try: role = ctx.guild.get_role(int(role_name))
         except: pass
     if not role:
         return await ctx.send(f"❌ No encontré el rol `{role_name}`")
-
     me = ctx.guild.me
     if not me.guild_permissions.manage_roles:
         return await ctx.send("❌ Yo no tengo el permiso `Gestionar Roles`. Actívalo en mi rol.")
@@ -268,7 +271,6 @@ async def r_add(ctx, user_id: str = None, *, role_name: str = None):
         return await ctx.send(f"❌ **Jerarquía:** Mi rol más alto es `{me.top_role.name}` (pos {me.top_role.position}) y `{role.name}` está en pos {role.position}. **Sube mi rol por encima de `{role.name}`.**")
     if member.top_role.position >= me.top_role.position and member.id!= ctx.guild.owner_id:
         return await ctx.send(f"❌ No puedo editar a {member.mention} porque su rol más alto `{member.top_role.name}` es más alto que el mío.")
-
     try:
         await member.add_roles(role, reason=f"r_add por {ctx.author}")
         await asyncio.sleep(0.7)
@@ -293,23 +295,19 @@ async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
         member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
     except:
         return await ctx.send(f"❌ No encontré al usuario `{user_id}`")
-
     if member.id == ctx.guild.owner_id:
         return await ctx.send("❌ No puedo dar/quitar roles al **owner del servidor**.")
-
     role = discord.utils.find(lambda r: r.name.lower() == role_name.lower().strip(), ctx.guild.roles)
     if not role:
         try: role = ctx.guild.get_role(int(role_name))
         except: pass
     if not role:
         return await ctx.send(f"❌ No encontré el rol `{role_name}`")
-
     me = ctx.guild.me
     if not me.guild_permissions.manage_roles:
         return await ctx.send("❌ Yo no tengo el permiso `Gestionar Roles`.")
     if role.position >= me.top_role.position:
         return await ctx.send(f"❌ Mi rol `{me.top_role.name}` está debajo de `{role.name}`. Súbeme.")
-
     try:
         await member.remove_roles(role, reason=f"r_remove por {ctx.author}")
         e = discord.Embed(description=f"**Rol Removido**\n\n━━━━━━━━━━━━━━━━━━━━\n👤 {member.mention} (`{member.id}`)\n🎭 `{role.name}`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
@@ -328,6 +326,17 @@ async def debug_rol(ctx, *, role_name: str = None):
     if not role: return await ctx.send(f"No encontré `{role_name}`")
     me = ctx.guild.me
     e = discord.Embed(description=f"**Debug Rol**\n\n━━━━━━━━━━━━━━━━━━━━\n**Yo:** {me.top_role.mention} pos `{me.top_role.position}`\n**Objetivo:** {role.mention} pos `{role.position}`\n**¿Puedo darlo?:** {'✅ SI' if role.position < me.top_role.position else '❌ NO - súbeme'}\n**Manage Roles:** {'✅' if me.guild_permissions.manage_roles else '❌'}\n**Admin:** {'✅' if me.guild_permissions.administrator else '❌'}\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+    await ctx.send(embed=e)
+
+@bot.command(name="debug_user")
+async def debug_user(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    try:
+        uid = int(user_id)
+        member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+    except: return await ctx.send("ID invalido")
+    me = ctx.guild.me
+    e = discord.Embed(description=f"**Debug User**\n\n━━━━━━━━━━━━━━━━━━━━\n**Target:** {member.mention} `{member.id}`\n**Su top rol:** {member.top_role.mention} pos `{member.top_role.position}`\n**Mi top rol:** {me.top_role.mention} pos `{me.top_role.position}`\n**¿Puedo editarlo?:** {'✅ SI' if member.top_role.position < me.top_role.position else '❌ NO - su rol es más alto que el mío'}\n**Es owner del server?:** {'✅ SI - no puedo editarlo' if member.id == ctx.guild.owner_id else '❌ NO'}\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
     await ctx.send(embed=e)
 
 @bot.command(name="role_inmune_add")
