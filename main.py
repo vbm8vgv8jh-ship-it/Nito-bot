@@ -6,7 +6,6 @@ from collections import defaultdict
 TOKEN = os.getenv("DISCORD_BOT_TOKEN") or os.getenv("TOKEN") or os.getenv("DISCORD_TOKEN")
 MY_ID = 1310357536087740450
 OWNER_FILE="owners.json"
-WHITELIST_FILE="whitelist.json"
 WHITELIST_PINGS_FILE="whitelist_pings.json"
 WHITELIST_ROLES_FILE="whitelist_roles.json"
 BACKUP_DIR="backups"
@@ -20,7 +19,6 @@ def load_owners():
     return {MY_ID}
 def save_owners():
     with open(OWNER_FILE,"w") as f: json.dump(list(OWNER_IDS),f)
-
 def load_set(path):
     if os.path.exists(path):
         try:
@@ -31,9 +29,9 @@ def save_set(path, data):
     with open(path,"w") as f: json.dump(list(data), f)
 
 OWNER_IDS=load_owners(); OWNER_IDS.add(MY_ID)
-WHITELIST_IDS=set()
 WHITELIST_PINGS=load_set(WHITELIST_PINGS_FILE)
 WHITELIST_ROLES=load_set(WHITELIST_ROLES_FILE)
+WHITELIST_IDS=set()
 
 intents=discord.Intents.default()
 intents.message_content=True
@@ -45,11 +43,16 @@ def sync_owners():
     o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
 def has_perm(ctx): return ctx.author.id in sync_owners()
 def is_safe(uid, owner_id=None):
-    return uid==MY_ID or uid in OWNER_IDS or uid in WHITELIST_PINGS or uid in WHITELIST_ROLES or uid==owner_id
+    return uid==MY_ID or uid in OWNER_IDS or uid==owner_id
+def is_role_allowed(uid, owner_id=None):
+    return is_safe(uid, owner_id) or uid in WHITELIST_ROLES
+def is_pings_allowed(uid, owner_id=None):
+    return is_safe(uid, owner_id) or uid in WHITELIST_PINGS
 
 LIMIT=3
 TIME_WINDOW=10
 cache=defaultdict(list)
+pings_warns=defaultdict(int)
 def is_spam(uid):
     now=time.time()
     cache[uid]=[t for t in cache[uid] if now-t < TIME_WINDOW]
@@ -102,7 +105,7 @@ async def on_member_update(before,after):
         async for entry in after.guild.audit_logs(limit=3,action=discord.AuditLogAction.member_role_update):
             if (datetime.now(timezone.utc)-entry.created_at).total_seconds()>10: continue
             if entry.target.id!=after.id: continue
-            if is_safe(entry.user.id, after.guild.owner_id): return
+            if is_role_allowed(entry.user.id, after.guild.owner_id): return
             try: await after.edit(roles=before.roles, reason="AntiRole")
             except: pass
             try: await after.guild.kick(entry.user, reason="AntiRole")
@@ -181,6 +184,34 @@ async def on_member_join(member):
             return
     except: pass
 
+LINK_WORDS = ["http://", "https://", "discord.gg/", "discord.com/invite/", "discordapp.com/invite/"]
+
+@bot.event
+async def on_message(message):
+    if message.author.bot or not message.guild:
+        await bot.process_commands(message)
+        return
+    is_ping_attempt = "@everyone" in message.content or "@here" in message.content or message.mention_everyone
+    is_link_attempt = any(w in message.content.lower() for w in LINK_WORDS)
+    if (is_ping_attempt or is_link_attempt) and not is_pings_allowed(message.author.id, message.guild.owner_id):
+        pings_warns[message.author.id] += 1
+        try: await message.delete()
+        except: pass
+        if pings_warns[message.author.id] == 1:
+            try:
+                await message.channel.send(f"⚠️ {message.author.mention} 1ra advertencia: sin `whitelist pings` no puedes usar `@everyone/@here` ni links. 2da = kick.", delete_after=7)
+            except: pass
+        else:
+            try:
+                await message.guild.kick(message.author, reason="2da vez everyone/here/links sin whitelist pings")
+                await message.channel.send(f"🔨 {message.author.mention} kickeado (2da vez everyone/links sin whitelist)", delete_after=7)
+                pings_warns.pop(message.author.id, None)
+            except:
+                try: await message.channel.send(f"🚫 No pude kickear a {message.author.mention}", delete_after=7)
+                except: pass
+        return
+    await bot.process_commands(message)
+
 @bot.command(name="owner_list")
 async def owner_list(ctx):
     if ctx.author.id!=MY_ID: return
@@ -189,13 +220,11 @@ async def owner_list(ctx):
         try:
             u = bot.get_user(uid) or await bot.fetch_user(uid)
             name = u.name if u else f"ID {uid}"
-        except:
-            name = f"ID {uid}"
+        except: name = f"ID {uid}"
         lines.append(f"{name} (`{uid}`)")
     body = "━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines) + "\n━━━━━━━━━━━━━━━━━━━━" if lines else "━━━━━━━━━━━━━━━━━━━━\n`Vacío`\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Bot Owners List ({len(OWNER_IDS)})**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    if ctx.guild.icon:
-        e.set_thumbnail(url=ctx.guild.icon.url)
+    if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="whitelist_list")
@@ -213,8 +242,7 @@ async def whitelist_list(ctx):
     r_txt = fmt(WHITELIST_ROLES)
     body = f"━━━━━━━━━━━━━━━━━━━━\n**PINGS [{len(WHITELIST_PINGS)}]:**\n{p_txt}\n\n**ROL [{len(WHITELIST_ROLES)}]:**\n{r_txt}\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Whitelist List**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    if ctx.guild.icon:
-        e.set_thumbnail(url=ctx.guild.icon.url)
+    if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="owner_add")
@@ -231,8 +259,7 @@ async def owner_add(ctx, user_id: str):
     save_owners()
     body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`)\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Owner Added**\n\n{body}", color=0x2b2d31)
-    if ctx.guild.icon:
-        e.set_thumbnail(url=ctx.guild.icon.url)
+    if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="whitelist_add")
@@ -240,35 +267,29 @@ async def whitelist_add(ctx, user_id: str = None, tipo: str = None):
     if not user_id:
         e = discord.Embed(color=0x2b2d31)
         e.set_author(name="Command: whitelist_add", icon_url=bot.user.display_avatar.url if bot.user.display_avatar else None)
-        e.description = "Adds a user to the pings or roles whitelist\n\n**Syntax:** `,whitelist_add | pings, rol`\n**Example:** `,whitelist_add (id) p, r`"
+        e.description = "Adds a user to the pings or roles whitelist\n\n**Syntax:** `_whitelist_add (id) pings, rol`\n**Example:** `_whitelist_add (id) p` = pings + links\n`_whitelist_add (id) r` = dar roles manual"
         await ctx.send(embed=e)
         return
-    if ctx.author.id!= MY_ID:
-        return
+    if ctx.author.id!= MY_ID: return
     try:
         uid = int(user_id)
         u = bot.get_user(uid) or await bot.fetch_user(uid)
         name = u.name if u else user_id
-    except:
-        return await ctx.send("ID invalido")
+    except: return await ctx.send("ID invalido")
     if not tipo:
-        e = discord.Embed(description=f"**Elige tipo**\n\n━━━━━━━━━━━━━━━━━━━━\n`_whitelist_add {uid} pings`\n`_whitelist_add {uid} rol`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+        e = discord.Embed(description=f"**Elige tipo**\n\n━━━━━━━━━━━━━━━━━━━━\n`_whitelist_add {uid} p` → pings + links\n`_whitelist_add {uid} r` → dar roles\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
         await ctx.send(embed=e)
         return
     t = tipo.lower()
     if t in ["pings", "ping", "p"]:
-        WHITELIST_PINGS.add(uid)
-        save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
-        body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`) → **PINGS**\n━━━━━━━━━━━━━━━━━━━━"
+        WHITELIST_PINGS.add(uid); save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
+        body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`) → **PINGS (everyone + links)**\n━━━━━━━━━━━━━━━━━━━━"
     elif t in ["rol", "roles", "r"]:
-        WHITELIST_ROLES.add(uid)
-        save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
-        body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`) → **ROL**\n━━━━━━━━━━━━━━━━━━━━"
-    else:
-        return await ctx.send("Usa `p, r` | `pings, rol`")
+        WHITELIST_ROLES.add(uid); save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
+        body = f"━━━━━━━━━━━━━━━━━━━━\n{name} (`{uid}`) → **ROL (dar roles)**\n━━━━━━━━━━━━━━━━━━━━"
+    else: return await ctx.send("Usa `p, r`")
     e = discord.Embed(description=f"**Whitelist Added**\n\n{body}", color=0x2b2d31)
-    if ctx.guild.icon:
-        e.set_thumbnail(url=ctx.guild.icon.url)
+    if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="whitelist_remove")
@@ -276,32 +297,25 @@ async def whitelist_remove(ctx, user_id: str = None, tipo: str = None):
     if ctx.author.id!=MY_ID: return
     if not user_id:
         e = discord.Embed(color=0x2b2d31)
-        e.set_author(name="Command: whitelist_remove", icon_url=bot.user.display_avatar.url if bot.user.display_avatar else None)
-        e.description = "Removes a user from the whitelist\n\n**Syntax:** `,whitelist_remove | pings, rol`\n**Example:** `,whitelist_remove (id) p, r`"
+        e.description = "Removes a user\n**Syntax:** `_whitelist_remove (id) p, r`"
         await ctx.send(embed=e)
         return
-    try:
-        uid=int(user_id)
-    except:
-        return await ctx.send("ID invalido")
+    try: uid=int(user_id)
+    except: return await ctx.send("ID invalido")
     if not tipo:
-        e = discord.Embed(description=f"**Elige tipo**\n\n━━━━━━━━━━━━━━━━━━━━\n`_whitelist_remove {uid} p`\n`_whitelist_remove {uid} r`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+        e = discord.Embed(description=f"**Elige tipo**\n\n`_whitelist_remove {uid} p`\n`_whitelist_remove {uid} r`", color=0x2b2d31)
         await ctx.send(embed=e)
         return
-    t = tipo.lower()
-    removed=False
-    label=""
+    t = tipo.lower(); removed=False; label=""
     if t in ["pings","ping","p"] and uid in WHITELIST_PINGS:
         WHITELIST_PINGS.remove(uid); save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS); removed=True; label="PINGS"
     elif t in ["rol","roles","r"] and uid in WHITELIST_ROLES:
         WHITELIST_ROLES.remove(uid); save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES); removed=True; label="ROL"
     if removed:
         body = f"━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed from **{label}**\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Whitelist Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
+        e = discord.Embed(description=f"**Whitelist Removed**\n\n{body}", color=0x2b2d31)
         await ctx.send(embed=e)
-    else:
-        await ctx.send(f"`{uid}` no estaba en {tipo}")
+    else: await ctx.send(f"`{uid}` no estaba en {tipo}")
 
 @bot.command(name="userinfo")
 async def userinfo(ctx, member: discord.Member = None):
@@ -312,8 +326,7 @@ async def userinfo(ctx, member: discord.Member = None):
     ago_j = discord.utils.format_dt(m.joined_at, "R") if m.joined_at else ""
     roles = m.roles[1:][::-1]
     roles_txt = " ".join([r.mention for r in roles[:10]]) if roles else "`Sin roles`"
-    if len(roles) > 10:
-        roles_txt += f" `+{len(roles)-10} más`"
+    if len(roles) > 10: roles_txt += f" `+{len(roles)-10} más`"
     body = f"""━━━━━━━━━━━━━━━━━━━━
 👤 **Usuario**
 {m.mention}
@@ -336,7 +349,7 @@ async def userinfo(ctx, member: discord.Member = None):
 🎭 **Roles [{len(roles)}]**
 {roles_txt}
 ━━━━━━━━━━━━━━━━━━━━"""
-    e = discord.Embed(description=f"**Información de {m.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+    e = discord.Embed(description=f"**Información de {m.name}**\n\n{body}", color=0x2b2d31)
     e.set_thumbnail(url=m.display_avatar.url)
     await ctx.send(embed=e)
 
@@ -371,9 +384,8 @@ Voz: {len(g.voice_channels)}
 Roles: {len(g.roles)}
 Boosts: {g.premium_subscription_count}
 ━━━━━━━━━━━━━━━━━━━━"""
-    e = discord.Embed(description=f"**{g.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    if g.icon:
-        e.set_thumbnail(url=g.icon.url)
+    e = discord.Embed(description=f"**{g.name}**\n\n{body}", color=0x2b2d31)
+    if g.icon: e.set_thumbnail(url=g.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="estado")
@@ -384,19 +396,19 @@ async def estado(ctx):
 🛡️ **AntiNuke** - 🟢 ACTIVO
 🤖 **AntiBot** - 🟢 ACTIVO
 🔨 **AntiBan/Kick** - 🟢 ACTIVO
+📢 **AntiEveryone/Links** - 🟢 1ra borra / 2da kick
 📦 **Backup Auto** - 1 DM cada 30s
 📊 **Servers:** {len(bot.guilds)} | **Ping:** {round(bot.latency*1000)}ms
 ━━━━━━━━━━━━━━━━━━━━"""
-    e = discord.Embed(description=f"**Estado de {g.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    if g.icon:
-        e.set_thumbnail(url=g.icon.url)
+    e = discord.Embed(description=f"**Estado de {g.name}**\n\n{body}", color=0x2b2d31)
+    if g.icon: e.set_thumbnail(url=g.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="avatar")
 async def avatar(ctx, member: discord.Member = None):
     m = member or ctx.author
     body = f"━━━━━━━━━━━━━━━━━━━━\n👤 {m.mention}\n`{m.id}`\n[Link]({m.display_avatar.url})\n━━━━━━━━━━━━━━━━━━━━"
-    e = discord.Embed(description=f"**Avatar de {m.name}**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+    e = discord.Embed(description=f"**Avatar de {m.name}**\n\n{body}", color=0x2b2d31)
     e.set_thumbnail(url=m.display_avatar.url)
     e.set_image(url=m.display_avatar.url)
     await ctx.send(embed=e)
@@ -406,9 +418,8 @@ async def ban(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
     await ctx.guild.ban(m,reason=reason)
     body = f"━━━━━━━━━━━━━━━━━━━━\n{m.name} (`{m.id}`)\nReason: `{reason}`\n━━━━━━━━━━━━━━━━━━━━"
-    e = discord.Embed(description=f"**Member Banned**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    if ctx.guild.icon:
-        e.set_thumbnail(url=ctx.guild.icon.url)
+    e = discord.Embed(description=f"**Member Banned**\n\n{body}", color=0x2b2d31)
+    if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="kick")
@@ -416,9 +427,8 @@ async def kick(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
     await m.kick(reason=reason)
     body = f"━━━━━━━━━━━━━━━━━━━━\n{m.name} (`{m.id}`)\nReason: `{reason}`\n━━━━━━━━━━━━━━━━━━━━"
-    e = discord.Embed(description=f"**Member Kicked**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-    if ctx.guild.icon:
-        e.set_thumbnail(url=ctx.guild.icon.url)
+    e = discord.Embed(description=f"**Member Kicked**\n\n{body}", color=0x2b2d31)
+    if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
 @bot.command(name="owner_remove")
@@ -427,9 +437,7 @@ async def owner_remove(ctx,user_id:str):
     uid=int(user_id)
     if uid!=MY_ID and uid in OWNER_IDS:
         OWNER_IDS.remove(uid); save_owners()
-        body = f"━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Owner Removed**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
+        e = discord.Embed(description=f"**Owner Removed**\n\n━━━━━━━━━━━━━━━━━━━━\n`{uid}` removed\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
         await ctx.send(embed=e)
 
 @bot.command(name="backup")
@@ -441,17 +449,16 @@ async def backup(ctx, action: str = None):
         await auto_backup(guild)
         with open(path,"r",encoding="utf-8") as f: data=json.load(f)
         body = f"━━━━━━━━━━━━━━━━━━━━\n• Roles • ( `{len(data['roles'])}` )\n• Channels • ( `{len(data['channels'])}` )\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Backup Created**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+        e = discord.Embed(description=f"**Backup Created**\n\n{body}", color=0x2b2d31)
         if guild.icon: e.set_thumbnail(url=guild.icon.url)
         await ctx.send(embed=e, file=discord.File(path))
     elif action == "load":
         if not os.path.exists(path):
-            e = discord.Embed(description=f"**Error**\n\n━━━━━━━━━━━━━━━━━━━━\n`No hay backup`\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31)
+            e = discord.Embed(description=f"**Error**\n\n━━━━━━━━━━━━━━━━━━━━\n`No hay backup`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
             await ctx.send(embed=e)
             return
         with open(path,"r",encoding="utf-8") as f: data=json.load(f)
-        e = discord.Embed(description=f"**Restoring**\n\n━━━━━━━━━━━━━━━━━━━━\n• {len(data['roles'])} roles\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        if guild.icon: e.set_thumbnail(url=guild.icon.url)
+        e = discord.Embed(description=f"**Restoring**\n\n━━━━━━━━━━━━━━━━━━━━\n• {len(data['roles'])} roles\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
         await ctx.send(embed=e)
         existing=[r.name for r in guild.roles]
         for r in data["roles"]:
@@ -460,13 +467,11 @@ async def backup(ctx, action: str = None):
                     await guild.create_role(name=r["name"], colour=discord.Colour(r["color"]), permissions=discord.Permissions(r["permissions"]), hoist=r["hoist"], mentionable=r["mentionable"])
                     await asyncio.sleep(0.3)
                 except: pass
-        e = discord.Embed(description=f"**Restored**\n\n━━━━━━━━━━━━━━━━━━━━\n`Completado`\n━━━━━━━━━━━━━━━━━━━━\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        if guild.icon: e.set_thumbnail(url=guild.icon.url)
+        e = discord.Embed(description=f"**Restored**\n\n━━━━━━━━━━━━━━━━━━━━\n`Completado`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
         await ctx.send(embed=e)
     else:
         body = "━━━━━━━━━━━━━━━━━━━━\n• _backup create\n• _backup load\n━━━━━━━━━━━━━━━━━━━━"
-        e = discord.Embed(description=f"**Backup Help**\n\n{body}\n\nRequested by {ctx.author.name}", color=0x2b2d31)
-        if guild.icon: e.set_thumbnail(url=guild.icon.url)
+        e = discord.Embed(description=f"**Backup Help**\n\n{body}", color=0x2b2d31)
         await ctx.send(embed=e)
 
 bot.run(TOKEN)
