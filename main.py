@@ -1,5 +1,5 @@
 import os, json, discord, asyncio, time
-from discord.ext import commands
+from discord.ext import commands, tasks
 from datetime import datetime, timezone
 from collections import defaultdict
 
@@ -11,6 +11,9 @@ WHITELIST_ROLES_FILE="whitelist_roles.json"
 ROLE_IMMUNE_FILE="role_immune.json"
 BACKUP_DIR="backups"
 os.makedirs(BACKUP_DIR, exist_ok=True)
+
+# --- CONFIG ROL POR ETIQUETA ---
+ROL_ETIQUETA_ID = 1370000000000000000 # <--- CAMBIA ESTO POR EL ID DEL ROL
 
 def load_owners():
     if os.path.exists(OWNER_FILE):
@@ -106,12 +109,54 @@ async def nuke_punish(guild, uid, reason):
         await guild.ban(m, reason=f"ANTINUKE {reason}")
     except: pass
 
+@tasks.loop(minutes=5)
+async def check_tags():
+    for g in bot.guilds:
+        rol = g.get_role(ROL_ETIQUETA_ID)
+        if not rol: continue
+        for m in g.members:
+            if m.bot: continue
+            pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
+            tiene = pg and getattr(pg, 'identity_guild_id', None) == g.id
+            try:
+                if tiene and rol not in m.roles:
+                    await m.add_roles(rol, reason="Sync tag [867]")
+                    await asyncio.sleep(0.5)
+                elif not tiene and rol in m.roles:
+                    await m.remove_roles(rol, reason="Sync tag removido")
+                    await asyncio.sleep(0.5)
+            except: pass
+
+@check_tags.before_loop
+async def before_check():
+    await bot.wait_until_ready()
+
 @bot.event
 async def on_ready():
     print(f"Listo {bot.user}")
+    if not check_tags.is_running():
+        check_tags.start()
 
 @bot.event
 async def on_member_update(before,after):
+    # --- AUTO ROL POR ETIQUETA INSTANTANEO ---
+    try:
+        g = after.guild
+        rol = g.get_role(ROL_ETIQUETA_ID)
+        if rol:
+            before_pg = getattr(before, 'primary_guild', None) or getattr(before, 'clan', None)
+            after_pg = getattr(after, 'primary_guild', None) or getattr(after, 'clan', None)
+            tenia = before_pg and getattr(before_pg, 'identity_guild_id', None) == g.id
+            tiene = after_pg and getattr(after_pg, 'identity_guild_id', None) == g.id
+            if not tenia and tiene:
+                if rol not in after.roles:
+                    await after.add_roles(rol, reason="Auto rol etiqueta")
+            elif tenia and not tiene:
+                if rol in after.roles:
+                    await after.remove_roles(rol, reason="Quitó etiqueta")
+    except: pass
+
+    # --- ANTINUKE ROLES ---
     if after.bot or len(before.roles)==len(after.roles): return
     added=[r for r in after.roles if r not in before.roles]
     risky=[r for r in added if r.permissions.administrator or r.permissions.ban_members or r.permissions.kick_members or r.permissions.manage_roles or r.permissions.manage_guild or r.permissions.manage_channels]
@@ -546,6 +591,7 @@ async def estado(ctx):
 📢 **AntiEveryone/Links** - 🟢 1ra borra / 2da kick
 🛡️ **Rol Inmune** - {len(IMMUNE_ROLES)} roles
 📦 **Backup Auto** - 1 DM cada 30s
+🏷️ **AutoTag** - 🟢 {g.get_role(ROL_ETIQUETA_ID).mention if g.get_role(ROL_ETIQUETA_ID) else 'No configurado'}
 📊 **Servers:** {len(bot.guilds)} | **Ping:** {round(bot.latency*1000)}ms
 ━━━━━━━━━━━━━━━━━━━━"""
     e = discord.Embed(description=f"**Estado de {g.name}**\n\n{body}", color=0x2b2d31)
@@ -625,30 +671,5 @@ async def backup(ctx, action: str = None):
         body = "━━━━━━━━━━━━━━━━━━━━\n• _backup create\n• _backup load\n━━━━━━━━━━━━━━━━━━━━"
         e = discord.Embed(description=f"**Backup Help**\n\n{body}", color=0x2b2d31)
         await ctx.send(embed=e)
-
-@bot.command(name="etiqueta", aliases=["tag", "tags"])
-async def etiqueta(ctx):
-    if not has_perm(ctx): return
-    g = ctx.guild
-    con_tag = []
-    for m in g.members:
-        pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
-        if pg and getattr(pg, 'identity_guild_id', None) == g.id:
-            con_tag.append(m)
-
-    if not con_tag:
-        return await ctx.send(f"❌ Nadie tiene la etiqueta de `{g.name}` activa")
-
-    menciones = "\n".join([m.mention for m in con_tag])
-    if len(menciones) > 3900:
-        menciones = "\n".join([m.mention for m in con_tag[:80]])
-        menciones += f"\n... y {len(con_tag)-80} más"
-
-    e = discord.Embed(
-        description=f"**Tienen la etiqueta [{g.name}] - {len(con_tag)}**\n\n{menciones}",
-        color=0xFF73FA
-    )
-    if g.icon: e.set_thumbnail(url=g.icon.url)
-    await ctx.send(embed=e)
 
 bot.run(TOKEN)
