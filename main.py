@@ -12,7 +12,6 @@ ROLE_IMMUNE_FILE="role_immune.json"
 BACKUP_DIR="backups"
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
-# --- CONFIG ROL POR ETIQUETA ---
 ROL_ETIQUETA_ID = 1554114278712414309
 
 def load_owners():
@@ -282,6 +281,38 @@ async def on_message(message):
                 except: pass
         return
     await bot.process_commands(message)
+
+@bot.command(name="forcetag")
+async def forcetag(ctx):
+    if not has_perm(ctx): return
+    g = ctx.guild
+    rol = g.get_role(ROL_ETIQUETA_ID)
+    if not rol: return await ctx.send(f"❌ No encontré el rol `{ROL_ETIQUETA_ID}` en este server")
+    count = 0
+    failed = 0
+    log = []
+    for m in g.members:
+        if m.bot: continue
+        pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
+        if pg:
+            print(f"DEBUG TAG: {m.name} -> identity_guild_id={getattr(pg, 'identity_guild_id', None)} server={g.id} tag={getattr(pg, 'tag', None)} badge={getattr(pg, 'badge', None)}")
+            if getattr(pg, 'identity_guild_id', None) == g.id:
+                if rol not in m.roles:
+                    try:
+                        await m.add_roles(rol, reason="Force tag sync")
+                        count += 1
+                        log.append(f"{m.mention}")
+                        await asyncio.sleep(0.4)
+                    except Exception as e:
+                        failed += 1
+                        await ctx.send(f"❌ No pude dar rol a {m.mention}: {e}")
+    if count==0 and failed==0:
+        await ctx.send(f"⚠️ No detecté a nadie con la etiqueta de `{g.name}` en cache. Si tú la tienes, es que Discord no te pasó en cache. Intenta hablar en el chat y vuelve a usar `_forcetag`")
+    else:
+        body = "\n".join(log[:30])
+        if len(log)>30: body+= f"\n... y {len(log)-30} más"
+        e = discord.Embed(description=f"**ForceTag completado**\n\n━━━━━━━━━━━━━━━━━━━━\n✅ Roles dados: `{count}`\n❌ Fallidos: `{failed}`\n\n{body}\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+        await ctx.send(embed=e)
 
 @bot.command(name="r_add")
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
