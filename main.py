@@ -1,5 +1,5 @@
 import os, json, discord, asyncio, time
-from discord.ext import commands, tasks
+from discord.ext import commands
 from datetime import datetime, timezone
 from collections import defaultdict
 
@@ -11,8 +11,6 @@ WHITELIST_ROLES_FILE="whitelist_roles.json"
 ROLE_IMMUNE_FILE="role_immune.json"
 BACKUP_DIR="backups"
 os.makedirs(BACKUP_DIR, exist_ok=True)
-
-ROL_ETIQUETA_ID = 1554114278712414309
 
 def load_owners():
     if os.path.exists(OWNER_FILE):
@@ -69,6 +67,8 @@ LIMIT=3
 TIME_WINDOW=10
 cache=defaultdict(list)
 pings_warns=defaultdict(int)
+immune_cache={}
+
 def is_spam(uid):
     now=time.time()
     cache[uid]=[t for t in cache[uid] if now-t < TIME_WINDOW]
@@ -88,74 +88,36 @@ async def auto_backup(guild):
             if isinstance(ch, discord.CategoryChannel): continue
             data["channels"].append({"name": ch.name, "type": str(ch.type), "category": ch.category.name if ch.category else None, "position": ch.position})
         with open(path, "w", encoding="utf-8") as f: json.dump(data, f, indent=4)
-    except: pass
+        return path
+    except: return None
 
 async def nuke_punish(guild, uid, reason):
     if is_safe(uid, guild.owner_id): return
-    if has_immune_role(guild, uid): return
     try:
-        if not hasattr(nuke_punish,"last_backup"): nuke_punish.last_backup=0
-        if time.time()-nuke_punish.last_backup>30:
-            await auto_backup(guild)
-            nuke_punish.last_backup=time.time()
+        path = await auto_backup(guild)
+        if path:
             try:
                 u = await bot.fetch_user(MY_ID)
-                await u.send(f"🚨 **BACKUP AUTO** `{guild.name}`", file=discord.File(f"{BACKUP_DIR}/{guild.id}.json"))
+                await u.send(f"🚨 **ANTINUKE** `{guild.name}` - `{reason}` por <@{uid}> (`{uid}`)", file=discord.File(path))
             except: pass
     except: pass
     try:
         m=guild.get_member(uid) or await guild.fetch_member(uid)
-        if has_immune_role(guild, uid): return
         await guild.ban(m, reason=f"ANTINUKE {reason}")
     except: pass
 
-@tasks.loop(minutes=5)
-async def check_tags():
-    for g in bot.guilds:
-        rol = g.get_role(ROL_ETIQUETA_ID)
-        if not rol: continue
-        try:
-            async for m in g.fetch_members(limit=None):
-                if m.bot: continue
-                pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
-                tiene = pg and getattr(pg, 'identity_guild_id', None) == g.id
-                try:
-                    if tiene and rol not in m.roles:
-                        await m.add_roles(rol, reason="Sync tag [867]")
-                        await asyncio.sleep(0.6)
-                    elif not tiene and rol in m.roles:
-                        await m.remove_roles(rol, reason="Sync tag removido")
-                        await asyncio.sleep(0.6)
-                except: pass
-        except Exception as e:
-            print(f"Error check_tags {g.name}: {e}")
-
-@check_tags.before_loop
-async def before_check():
-    await bot.wait_until_ready()
-
 @bot.event
 async def on_ready():
-    print(f"Listo {bot.user} - chunk: {bot.chunk_guilds_at_startup}")
-    if not check_tags.is_running():
-        check_tags.start()
+    print(f"Listo {bot.user} - Sin AutoTag - AntiBot solo OWNER - Inmune ID: {len(IMMUNE_ROLES)}")
 
 @bot.event
 async def on_member_update(before,after):
     try:
-        g = after.guild
-        rol = g.get_role(ROL_ETIQUETA_ID)
-        if rol:
-            before_pg = getattr(before, 'primary_guild', None) or getattr(before, 'clan', None)
-            after_pg = getattr(after, 'primary_guild', None) or getattr(after, 'clan', None)
-            tenia = before_pg and getattr(before_pg, 'identity_guild_id', None) == g.id
-            tiene = after_pg and getattr(after_pg, 'identity_guild_id', None) == g.id
-            if not tenia and tiene:
-                if rol not in after.roles:
-                    await after.add_roles(rol, reason="Auto rol etiqueta")
-            elif tenia and not tiene:
-                if rol in after.roles:
-                    await after.remove_roles(rol, reason="Quitó etiqueta")
+        if any(r.id in IMMUNE_ROLES for r in after.roles):
+            immune_cache[after.id]=True
+        else:
+            if after.id in immune_cache:
+                immune_cache.pop(after.id,None)
     except: pass
 
     if after.bot or len(before.roles)==len(after.roles): return
@@ -181,8 +143,20 @@ async def on_member_update(before,after):
 @bot.event
 async def on_member_ban(guild,user):
     try:
+        await asyncio.sleep(1)
         async for e in guild.audit_logs(limit=1,action=discord.AuditLogAction.ban):
             if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
+            if e.target.id!= user.id: continue
+            if e.target.id in immune_cache or user.id in immune_cache:
+                if not is_safe(e.user.id, guild.owner_id):
+                    try: await guild.unban(user, reason="Proteccion rol inmune - solo owner puede banear inmunes")
+                    except: pass
+                    await nuke_punish(guild, e.user.id, f"Intento banear a inmune {user.id}")
+                    try:
+                        u = await bot.fetch_user(MY_ID)
+                        await u.send(f"🛡️ **PROTECCION INMUNE** En `{guild.name}` <@{e.user.id}> (`{e.user.id}`) intento banear a inmune <@{user.id}> y fue baneado. Desbaneado el inmune.")
+                    except: pass
+                    return
             if is_safe(e.user.id, guild.owner_id): return
             if has_immune_role(guild, e.user.id): return
             if is_spam(e.user.id): await nuke_punish(guild,e.user.id,"Mass Ban")
@@ -195,6 +169,14 @@ async def on_member_remove(member):
         async for e in member.guild.audit_logs(limit=1,action=discord.AuditLogAction.kick):
             if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
             if e.target.id!=member.id: continue
+            if member.id in immune_cache or any(r.id in IMMUNE_ROLES for r in member.roles):
+                if not is_safe(e.user.id, member.guild.owner_id):
+                    await nuke_punish(member.guild, e.user.id, f"Intento kickear a inmune {member.id}")
+                    try:
+                        u = await bot.fetch_user(MY_ID)
+                        await u.send(f"🛡️ **PROTECCION INMUNE** En `{member.guild.name}` <@{e.user.id}> intento kickear a inmune {member.mention} y fue baneado")
+                    except: pass
+                    return
             if is_safe(e.user.id, member.guild.owner_id): return
             if has_immune_role(member.guild, e.user.id): return
             if is_spam(e.user.id): await nuke_punish(member.guild,e.user.id,"Mass Kick")
@@ -248,11 +230,13 @@ async def on_member_join(member):
         async for e in member.guild.audit_logs(limit=5,action=discord.AuditLogAction.bot_add):
             if (datetime.now(timezone.utc)-e.created_at).total_seconds()>15: continue
             if e.target.id!=member.id: continue
-            if is_safe(e.user.id, member.guild.owner_id): return
-            if has_immune_role(member.guild, e.user.id): return
-            try: await member.ban(reason="Antibot")
-            except: pass
-            await nuke_punish(member.guild,e.user.id,"Bot Add")
+            if is_safe(e.user.id, member.guild.owner_id):
+                return
+            try: await member.ban(reason=f"Antibot - añadido por {e.user} sin owner")
+            except:
+                try: await member.kick(reason="Antibot")
+                except: pass
+            await nuke_punish(member.guild, e.user.id, f"Bot Add ({member.id})")
             return
     except: pass
 
@@ -285,31 +269,6 @@ async def on_message(message):
                 except: pass
         return
     await bot.process_commands(message)
-
-@bot.command(name="forcetag")
-async def forcetag(ctx):
-    if not has_perm(ctx): return
-    g = ctx.guild
-    rol = g.get_role(ROL_ETIQUETA_ID)
-    if not rol: return await ctx.send(f"❌ No encontré el rol `{ROL_ETIQUETA_ID}` en este server")
-    await ctx.send(f"🔍 Forzando descarga de miembros de `{g.name}`... tarda 10-20s")
-    count = 0
-    total = 0
-    async for m in g.fetch_members(limit=None):
-        total+=1
-        if m.bot: continue
-        pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
-        if pg:
-            gid = getattr(pg, 'identity_guild_id', None)
-            if gid == g.id and rol not in m.roles:
-                try:
-                    await m.add_roles(rol, reason="Force tag sync")
-                    count += 1
-                    await asyncio.sleep(0.5)
-                except Exception as e:
-                    print(f"Error rol {m}: {e}")
-    e = discord.Embed(description=f"**ForceTag**\n\n━━━━━━━━━━━━━━━━━━━━\n📊 Escaneados: `{total}`\n✅ Roles dados: `{count}`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
-    await ctx.send(embed=e)
 
 @bot.command(name="r_add")
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
@@ -395,45 +354,36 @@ async def debug_rol(ctx, *, role_name: str = None):
     e = discord.Embed(description=f"**Debug Rol**\n\n━━━━━━━━━━━━━━━━━━━━\n**Yo:** {me.top_role.mention} pos `{me.top_role.position}`\n**Objetivo:** {role.mention} pos `{role.position}`\n**¿Puedo darlo?:** {'✅ SI' if role.position < me.top_role.position else '❌ NO - súbeme'}\n**Manage Roles:** {'✅' if me.guild_permissions.manage_roles else '❌'}\n**Admin:** {'✅' if me.guild_permissions.administrator else '❌'}\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
     await ctx.send(embed=e)
 
-@bot.command(name="debug_user")
-async def debug_user(ctx, user_id: str = None):
-    if not has_perm(ctx): return
-    try:
-        uid = int(user_id)
-        member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
-    except: return await ctx.send("ID invalido")
-    me = ctx.guild.me
-    e = discord.Embed(description=f"**Debug User**\n\n━━━━━━━━━━━━━━━━━━━━\n**Target:** {member.mention} `{member.id}`\n**Su top rol:** {member.top_role.mention} pos `{member.top_role.position}`\n**Mi top rol:** {me.top_role.mention} pos `{me.top_role.position}`\n**¿Puedo editarlo?:** {'✅ SI' if member.top_role.position < me.top_role.position else '❌ NO - su rol es más alto que el mío'}\n**Es owner del server?:** {'✅ SI - no puedo editarlo' if member.id == ctx.guild.owner_id else '❌ NO'}\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
-    await ctx.send(embed=e)
-
 @bot.command(name="role_inmune_add")
-async def role_inmune_add(ctx, *, role_name: str = None):
+async def role_inmune_add(ctx, role_id: str = None):
     if not has_perm(ctx): return
-    if not role_name: return await ctx.send("**Uso:** `_role_inmune_add nombre del rol`")
-    role = discord.utils.find(lambda r: r.name.lower() == role_name.lower(), ctx.guild.roles)
-    if not role:
-        try: role = ctx.guild.get_role(int(role_name))
-        except: pass
-    if not role: return await ctx.send(f"❌ No encontré el rol `{role_name}`")
-    IMMUNE_ROLES.add(role.id)
+    if not role_id: return await ctx.send("**Uso:** `_role_inmune_add ID_DEL_ROL`\nEjemplo: `_role_inmune_add 123456789012345678`")
+    try:
+        rid = int(role_id)
+        role = ctx.guild.get_role(rid)
+        if not role:
+            return await ctx.send(f"❌ No encontré ningún rol con ID `{rid}` en este server. Asegúrate de copiar el ID bien (click derecho > Copiar ID)")
+    except:
+        return await ctx.send("❌ ID invalido, debe ser un número")
+    IMMUNE_ROLES.add(rid)
     save_set(ROLE_IMMUNE_FILE, IMMUNE_ROLES)
-    e = discord.Embed(description=f"**Rol Inmune Agregado**\n\n━━━━━━━━━━━━━━━━━━━━\n🎭 {role.mention} (`{role.id}`)\nAhora es inmune a ban/kick y puede dar roles y pings.\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+    e = discord.Embed(description=f"**Rol Inmune Agregado por ID**\n\n━━━━━━━━━━━━━━━━━━━━\n🎭 {role.mention} (`{role.id}`)\nAhora es inmune a ban/kick y solo owners pueden banearlo.\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
     await ctx.send(embed=e)
 
 @bot.command(name="role_inmune_remove")
-async def role_inmune_remove(ctx, *, role_name: str = None):
+async def role_inmune_remove(ctx, role_id: str = None):
     if not has_perm(ctx): return
-    if not role_name: return await ctx.send("**Uso:** `_role_inmune_remove nombre del rol`")
-    role = discord.utils.find(lambda r: r.name.lower() == role_name.lower(), ctx.guild.roles)
-    if not role:
-        try: role = ctx.guild.get_role(int(role_name))
-        except: pass
-    if role and role.id in IMMUNE_ROLES:
-        IMMUNE_ROLES.remove(role.id)
+    if not role_id: return await ctx.send("**Uso:** `_role_inmune_remove ID_DEL_ROL`")
+    try: rid = int(role_id)
+    except: return await ctx.send("❌ ID invalido")
+    role = ctx.guild.get_role(rid)
+    if rid in IMMUNE_ROLES:
+        IMMUNE_ROLES.remove(rid)
         save_set(ROLE_IMMUNE_FILE, IMMUNE_ROLES)
-        await ctx.send(f"✅ Rol `{role.name}` ya no es inmune")
+        name = role.name if role else str(rid)
+        await ctx.send(f"✅ Rol `{name}` (`{rid}`) ya no es inmune")
     else:
-        await ctx.send(f"❌ `{role_name}` no estaba como inmune")
+        await ctx.send(f"❌ ID `{rid}` no estaba como inmune")
 
 @bot.command(name="role_inmune_list")
 async def role_inmune_list(ctx):
@@ -444,9 +394,9 @@ async def role_inmune_list(ctx):
     for rid in IMMUNE_ROLES:
         r = ctx.guild.get_role(rid)
         if r: lines.append(f"{r.mention} (`{rid}`)")
-        else: lines.append(f"ID {rid} (rol no encontrado)")
+        else: lines.append(f"ID {rid} (rol no encontrado en este server)")
     body = "━━━━━━━━━━━━━━━━━━━━\n" + "\n".join(lines) + "\n━━━━━━━━━━━━━━━━━━━━"
-    e = discord.Embed(description=f"**Roles Inmunes [{len(IMMUNE_ROLES)}]**\n\n{body}", color=0x2b2d31)
+    e = discord.Embed(description=f"**Roles Inmunes por ID [{len(IMMUNE_ROLES)}]**\n\n{body}", color=0x2b2d31)
     await ctx.send(embed=e)
 
 @bot.command(name="owner_list")
@@ -612,12 +562,11 @@ async def estado(ctx):
     g = ctx.guild
     body = f"""━━━━━━━━━━━━━━━━━━━━
 🛡️ **AntiNuke** - 🟢 ACTIVO
-🤖 **AntiBot** - 🟢 ACTIVO
+🤖 **AntiBot** - 🟢 SOLO OWNER
 🔨 **AntiBan/Kick** - 🟢 ACTIVO
 📢 **AntiEveryone/Links** - 🟢 1ra borra / 2da kick
-🛡️ **Rol Inmune** - {len(IMMUNE_ROLES)} roles
-📦 **Backup Auto** - 1 DM cada 30s
-🏷️ **AutoTag** - 🟢 {g.get_role(ROL_ETIQUETA_ID).mention if g.get_role(ROL_ETIQUETA_ID) else 'No configurado'}
+🛡️ **Rol Inmune por ID** - {len(IMMUNE_ROLES)} roles
+📦 **Backup Auto** - DM solo si ataque
 📊 **Servers:** {len(bot.guilds)} | **Ping:** {round(bot.latency*1000)}ms
 ━━━━━━━━━━━━━━━━━━━━"""
     e = discord.Embed(description=f"**Estado de {g.name}**\n\n{body}", color=0x2b2d31)
@@ -636,8 +585,14 @@ async def avatar(ctx, member: discord.Member = None):
 @bot.command(name="ban")
 async def ban(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
-    if has_immune_role(ctx.guild, m.id):
-        return await ctx.send(f"❌ {m.mention} tiene rol inmune")
+    if any(r.id in IMMUNE_ROLES for r in m.roles):
+        if ctx.author.id!= MY_ID and ctx.author.id not in OWNER_IDS:
+            try:
+                await ctx.guild.ban(ctx.author, reason="Intento banear a inmune sin ser owner")
+                e = discord.Embed(description=f"**Proteccion Inmune**\n\n━━━━━━━━━━━━━━━━━━━━\n🚫 {ctx.author.mention} intentaste banear a {m.mention} que es inmune\nFuiste baneado automaticamente\nSolo owners pueden banear inmunes\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
+                await ctx.send(embed=e)
+            except: pass
+            return
     await ctx.guild.ban(m,reason=reason)
     body = f"━━━━━━━━━━━━━━━━━━━━\n{m.name} (`{m.id}`)\nReason: `{reason}`\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Member Banned**\n\n{body}", color=0x2b2d31)
@@ -647,8 +602,14 @@ async def ban(ctx,m:discord.Member,*,reason="Sin razón"):
 @bot.command(name="kick")
 async def kick(ctx,m:discord.Member,*,reason="Sin razón"):
     if not has_perm(ctx): return
-    if has_immune_role(ctx.guild, m.id):
-        return await ctx.send(f"❌ {m.mention} tiene rol inmune")
+    if any(r.id in IMMUNE_ROLES for r in m.roles):
+        if ctx.author.id!= MY_ID and ctx.author.id not in OWNER_IDS:
+            try:
+                await ctx.guild.ban(ctx.author, reason="Intento kickear a inmune sin ser owner")
+                e = discord.Embed(description=f"**Proteccion Inmune**\n\n━━━━━━━━━━━━━━━━━━━━\n🚫 {ctx.author.mention} intentaste kickear a {m.mention} que es inmune\nFuiste baneado automaticamente\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
+                await ctx.send(embed=e)
+            except: pass
+            return
     await m.kick(reason=reason)
     body = f"━━━━━━━━━━━━━━━━━━━━\n{m.name} (`{m.id}`)\nReason: `{reason}`\n━━━━━━━━━━━━━━━━━━━━"
     e = discord.Embed(description=f"**Member Kicked**\n\n{body}", color=0x2b2d31)
@@ -670,12 +631,12 @@ async def backup(ctx, action: str = None):
     guild = ctx.guild
     path = f"{BACKUP_DIR}/{guild.id}.json"
     if action == "create":
-        await auto_backup(guild)
-        with open(path,"r",encoding="utf-8") as f: data=json.load(f)
+        p = await auto_backup(guild)
+        with open(p,"r",encoding="utf-8") as f: data=json.load(f)
         body = f"━━━━━━━━━━━━━━━━━━━━\n• Roles • ( `{len(data['roles'])}` )\n• Channels • ( `{len(data['channels'])}` )\n━━━━━━━━━━━━━━━━━━━━"
         e = discord.Embed(description=f"**Backup Created**\n\n{body}", color=0x2b2d31)
         if guild.icon: e.set_thumbnail(url=guild.icon.url)
-        await ctx.send(embed=e, file=discord.File(path))
+        await ctx.send(embed=e, file=discord.File(p))
     elif action == "load":
         if not os.path.exists(path):
             e = discord.Embed(description=f"**Error**\n\n━━━━━━━━━━━━━━━━━━━━\n`No hay backup`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
