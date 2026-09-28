@@ -626,10 +626,7 @@ async def backup(ctx, action: str = None):
         e = discord.Embed(description=f"**Backup Help**\n\n{body}", color=0x2b2d31)
         await ctx.send(embed=e)
 
-# --- NUEVO: LISTA ETIQUETA ROSA [867] - SOLO MENCION ---
-@bot.command(name="etiqueta")
-@bot.command(name="tag")
-@bot.command(name="tags")
+@bot.command(name="etiqueta", aliases=["tag", "tags"])
 async def etiqueta(ctx):
     if not has_perm(ctx): return
     g = ctx.guild
