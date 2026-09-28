@@ -428,7 +428,6 @@ async def owner_add(ctx, user_id: str):
     if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
     await ctx.send(embed=e)
 
-# FORMATO NUEVO: ID add wh r / ID add wh p
 @bot.command(name="whitelist_add")
 async def whitelist_add(ctx, user_id: str = None, tipo: str = None):
     if ctx.author.id!= MY_ID: return
@@ -626,5 +625,33 @@ async def backup(ctx, action: str = None):
         body = "━━━━━━━━━━━━━━━━━━━━\n• _backup create\n• _backup load\n━━━━━━━━━━━━━━━━━━━━"
         e = discord.Embed(description=f"**Backup Help**\n\n{body}", color=0x2b2d31)
         await ctx.send(embed=e)
+
+# --- NUEVO: LISTA ETIQUETA ROSA [867] - SOLO MENCION ---
+@bot.command(name="etiqueta")
+@bot.command(name="tag")
+@bot.command(name="tags")
+async def etiqueta(ctx):
+    if not has_perm(ctx): return
+    g = ctx.guild
+    con_tag = []
+    for m in g.members:
+        pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
+        if pg and getattr(pg, 'identity_guild_id', None) == g.id:
+            con_tag.append(m)
+
+    if not con_tag:
+        return await ctx.send(f"❌ Nadie tiene la etiqueta de `{g.name}` activa")
+
+    menciones = "\n".join([m.mention for m in con_tag])
+    if len(menciones) > 3900:
+        menciones = "\n".join([m.mention for m in con_tag[:80]])
+        menciones += f"\n... y {len(con_tag)-80} más"
+
+    e = discord.Embed(
+        description=f"**Tienen la etiqueta [{g.name}] - {len(con_tag)}**\n\n{menciones}",
+        color=0xFF73FA
+    )
+    if g.icon: e.set_thumbnail(url=g.icon.url)
+    await ctx.send(embed=e)
 
 bot.run(TOKEN)
