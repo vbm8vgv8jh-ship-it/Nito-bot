@@ -40,7 +40,8 @@ intents=discord.Intents.default()
 intents.message_content=True
 intents.members=True
 intents.guilds=True
-bot=commands.Bot(command_prefix="_",intents=intents,help_command=None)
+intents.presences=True
+bot=commands.Bot(command_prefix="_",intents=intents,help_command=None, chunk_guilds_at_startup=True)
 
 def sync_owners():
     o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
@@ -113,18 +114,21 @@ async def check_tags():
     for g in bot.guilds:
         rol = g.get_role(ROL_ETIQUETA_ID)
         if not rol: continue
-        for m in g.members:
-            if m.bot: continue
-            pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
-            tiene = pg and getattr(pg, 'identity_guild_id', None) == g.id
-            try:
-                if tiene and rol not in m.roles:
-                    await m.add_roles(rol, reason="Sync tag [867]")
-                    await asyncio.sleep(0.5)
-                elif not tiene and rol in m.roles:
-                    await m.remove_roles(rol, reason="Sync tag removido")
-                    await asyncio.sleep(0.5)
-            except: pass
+        try:
+            async for m in g.fetch_members(limit=None):
+                if m.bot: continue
+                pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
+                tiene = pg and getattr(pg, 'identity_guild_id', None) == g.id
+                try:
+                    if tiene and rol not in m.roles:
+                        await m.add_roles(rol, reason="Sync tag [867]")
+                        await asyncio.sleep(0.6)
+                    elif not tiene and rol in m.roles:
+                        await m.remove_roles(rol, reason="Sync tag removido")
+                        await asyncio.sleep(0.6)
+                except: pass
+        except Exception as e:
+            print(f"Error check_tags {g.name}: {e}")
 
 @check_tags.before_loop
 async def before_check():
@@ -132,7 +136,7 @@ async def before_check():
 
 @bot.event
 async def on_ready():
-    print(f"Listo {bot.user}")
+    print(f"Listo {bot.user} - chunk: {bot.chunk_guilds_at_startup}")
     if not check_tags.is_running():
         check_tags.start()
 
@@ -288,31 +292,24 @@ async def forcetag(ctx):
     g = ctx.guild
     rol = g.get_role(ROL_ETIQUETA_ID)
     if not rol: return await ctx.send(f"❌ No encontré el rol `{ROL_ETIQUETA_ID}` en este server")
+    await ctx.send(f"🔍 Forzando descarga de miembros de `{g.name}`... tarda 10-20s")
     count = 0
-    failed = 0
-    log = []
-    for m in g.members:
+    total = 0
+    async for m in g.fetch_members(limit=None):
+        total+=1
         if m.bot: continue
         pg = getattr(m, 'primary_guild', None) or getattr(m, 'clan', None)
         if pg:
-            print(f"DEBUG TAG: {m.name} -> identity_guild_id={getattr(pg, 'identity_guild_id', None)} server={g.id} tag={getattr(pg, 'tag', None)} badge={getattr(pg, 'badge', None)}")
-            if getattr(pg, 'identity_guild_id', None) == g.id:
-                if rol not in m.roles:
-                    try:
-                        await m.add_roles(rol, reason="Force tag sync")
-                        count += 1
-                        log.append(f"{m.mention}")
-                        await asyncio.sleep(0.4)
-                    except Exception as e:
-                        failed += 1
-                        await ctx.send(f"❌ No pude dar rol a {m.mention}: {e}")
-    if count==0 and failed==0:
-        await ctx.send(f"⚠️ No detecté a nadie con la etiqueta de `{g.name}` en cache. Si tú la tienes, es que Discord no te pasó en cache. Intenta hablar en el chat y vuelve a usar `_forcetag`")
-    else:
-        body = "\n".join(log[:30])
-        if len(log)>30: body+= f"\n... y {len(log)-30} más"
-        e = discord.Embed(description=f"**ForceTag completado**\n\n━━━━━━━━━━━━━━━━━━━━\n✅ Roles dados: `{count}`\n❌ Fallidos: `{failed}`\n\n{body}\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
-        await ctx.send(embed=e)
+            gid = getattr(pg, 'identity_guild_id', None)
+            if gid == g.id and rol not in m.roles:
+                try:
+                    await m.add_roles(rol, reason="Force tag sync")
+                    count += 1
+                    await asyncio.sleep(0.5)
+                except Exception as e:
+                    print(f"Error rol {m}: {e}")
+    e = discord.Embed(description=f"**ForceTag**\n\n━━━━━━━━━━━━━━━━━━━━\n📊 Escaneados: `{total}`\n✅ Roles dados: `{count}`\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+    await ctx.send(embed=e)
 
 @bot.command(name="r_add")
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
