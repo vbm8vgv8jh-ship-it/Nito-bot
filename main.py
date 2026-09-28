@@ -13,7 +13,7 @@ BACKUP_DIR="backups"
 os.makedirs(BACKUP_DIR, exist_ok=True)
 
 # --- CONFIG ROL POR ETIQUETA ---
-ROL_ETIQUETA_ID = 1370000000000000000 # <--- CAMBIA ESTO POR EL ID DEL ROL
+ROL_ETIQUETA_ID = 1554114278712414309
 
 def load_owners():
     if os.path.exists(OWNER_FILE):
@@ -139,7 +139,6 @@ async def on_ready():
 
 @bot.event
 async def on_member_update(before,after):
-    # --- AUTO ROL POR ETIQUETA INSTANTANEO ---
     try:
         g = after.guild
         rol = g.get_role(ROL_ETIQUETA_ID)
@@ -156,7 +155,6 @@ async def on_member_update(before,after):
                     await after.remove_roles(rol, reason="Quitó etiqueta")
     except: pass
 
-    # --- ANTINUKE ROLES ---
     if after.bot or len(before.roles)==len(after.roles): return
     added=[r for r in after.roles if r not in before.roles]
     risky=[r for r in added if r.permissions.administrator or r.permissions.ban_members or r.permissions.kick_members or r.permissions.manage_roles or r.permissions.manage_guild or r.permissions.manage_channels]
