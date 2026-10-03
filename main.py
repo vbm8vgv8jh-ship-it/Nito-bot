@@ -120,7 +120,7 @@ async def nuke_punish(guild, uid, reason):
 
 @bot.event
 async def on_ready():
-    print(f"Listo {bot.user} - Voz 24/7 ON - {len(VOICE_CHANNELS)} canales guardados")
+    print(f"Listo {bot.user} - Voz 24/7 ON + AntiGif 5s")
     for guild in bot.guilds:
         gid = str(guild.id)
         if gid in VOICE_CHANNELS:
@@ -136,10 +136,8 @@ async def on_ready():
                         except: pass
                     vc = await channel.connect(self_deaf=True)
                     voice_clients[guild.id] = vc
-                    print(f"Reconectado voz {guild.name} -> {channel.name}")
                     await asyncio.sleep(1)
-            except Exception as e:
-                print(f"Error voz {guild.name}: {e}")
+            except: pass
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -195,10 +193,6 @@ async def on_member_ban(guild,user):
                     try: await guild.unban(user, reason="Proteccion rol inmune")
                     except: pass
                     await nuke_punish(guild, e.user.id, f"Intento banear a inmune {user.id}")
-                    try:
-                        u = await bot.fetch_user(MY_ID)
-                        await u.send(f"🛡️ **PROTECCION INMUNE** En `{guild.name}` <@{e.user.id}> intento banear a inmune <@{user.id}> y fue baneado.")
-                    except: pass
                     return
             if is_safe(e.user.id, guild.owner_id): return
             if has_immune_role(guild, e.user.id): return
@@ -279,36 +273,78 @@ async def on_member_join(member):
     except: pass
 
 LINK_WORDS = ["http://", "https://", "discord.gg/", "discord.com/invite/", "discordapp.com/invite/"]
+GIF_ALLOW = ["tenor.com", "giphy.com", "media.tenor.com", "media.giphy.com", ".gif", "giphy", "tenor"]
 
 @bot.event
 async def on_message(message):
     if message.author.bot or not message.guild:
         await bot.process_commands(message)
         return
-    is_ping_attempt = "@everyone" in message.content or "@here" in message.content or message.mention_everyone
-    is_link_attempt = any(w in message.content.lower() for w in LINK_WORDS)
-    if (is_ping_attempt or is_link_attempt) and not is_pings_allowed(message.guild, message.author.id, message.guild.owner_id):
-        pings_warns[message.author.id] += 1
-        try: await message.delete()
-        except: pass
-        if pings_warns[message.author.id] == 1:
-            try: await message.channel.send(f"⚠️ {message.author.mention} 1ra advertencia: sin `whitelist pings/rol inmune` no puedes usar `@everyone/@here` ni links. 2da = kick.", delete_after=7)
-            except: pass
-        else:
-            try:
-                if has_immune_role(message.guild, message.author.id):
-                    pings_warns.pop(message.author.id, None)
-                    return
-                await message.guild.kick(message.author, reason="2da vez everyone/here/links sin whitelist")
-                await message.channel.send(f"🔨 {message.author.mention} kickeado", delete_after=7)
-                pings_warns.pop(message.author.id, None)
-            except:
-                try: await message.channel.send(f"🚫 No pude kickear a {message.author.mention}", delete_after=7)
-                except: pass
-        return
-    await bot.process_commands(message)
 
-# --- COMANDOS DE VOZ 24/7 ---
+    content_lower = message.content.lower()
+    is_ping_attempt = "@everyone" in message.content or "@here" in message.content or message.mention_everyone
+    is_link_attempt = any(w in content_lower for w in LINK_WORDS)
+
+    if not is_ping_attempt and not is_link_attempt:
+        await bot.process_commands(message)
+        return
+
+    if is_pings_allowed(message.guild, message.author.id, message.guild.owner_id):
+        await bot.process_commands(message)
+        return
+
+    if is_link_attempt:
+        await asyncio.sleep(5)
+        try:
+            fresh_msg = await message.channel.fetch_message(message.id)
+            if not fresh_msg:
+                await bot.process_commands(message)
+                return
+            is_real_gif = False
+            cl = fresh_msg.content.lower()
+            if any(g in cl for g in GIF_ALLOW):
+                is_real_gif = True
+            if fresh_msg.embeds:
+                for emb in fresh_msg.embeds:
+                    url = str(emb.url).lower() if emb.url else ""
+                    if emb.type == "gifv" or "tenor" in url or "giphy" in url:
+                        is_real_gif = True
+                        break
+                    if emb.video or emb.image:
+                        # Si tiene video/imagen y el contenido original era tenor/giphy, es gif
+                        if any(g in cl for g in GIF_ALLOW):
+                            is_real_gif = True
+                            break
+            if fresh_msg.attachments and any(a.filename.lower().endswith(".gif") for a in fresh_msg.attachments):
+                is_real_gif = True
+            if is_real_gif:
+                await bot.process_commands(fresh_msg)
+                return
+        except discord.NotFound:
+            await bot.process_commands(message)
+            return
+        except:
+            pass
+
+    pings_warns[message.author.id] += 1
+    try: await message.delete()
+    except: pass
+    if pings_warns[message.author.id] == 1:
+        try: await message.channel.send(f"⚠️ {message.author.mention} 1ra advertencia: sin whitelist no puedes usar `@everyone/@here` ni links. (gifs permitidos). 2da = kick.", delete_after=7)
+        except: pass
+    else:
+        try:
+            if has_immune_role(message.guild, message.author.id):
+                pings_warns.pop(message.author.id, None)
+                return
+            await message.guild.kick(message.author, reason="2da vez everyone/links")
+            await message.channel.send(f"🔨 {message.author.mention} kickeado por links/@everyone", delete_after=7)
+            pings_warns.pop(message.author.id, None)
+        except:
+            try: await message.channel.send(f"🚫 No pude kickear a {message.author.mention}", delete_after=7)
+            except: pass
+    return
+
 @bot.command(name="join")
 async def join(ctx):
     if not has_perm(ctx): return
@@ -328,7 +364,7 @@ async def join(ctx):
         if ctx.guild.icon: e.set_thumbnail(url=ctx.guild.icon.url)
         await ctx.send(embed=e)
     except Exception as ex:
-        e = discord.Embed(description=f"**Error Voz**\n\n━━━━━━━━━━━━━━━━━━━━\n```\n{ex}\n```\nAsegúrate de instalar:\n`discord.py[voice]`\n`PyNaCl`\nY darme permisos Conectar/Hablar\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
+        e = discord.Embed(description=f"**Error Voz**\n\n━━━━━━━━━━━━━━━━━━━━\n```\n{ex}\n```\nInstala:\n`discord.py[voice]`\n`PyNaCl`\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
         await ctx.send(embed=e)
 
 @bot.command(name="leave")
@@ -372,10 +408,8 @@ async def r_add(ctx, user_id: str = None, *, role_name: str = None):
         return await ctx.send(f"❌ `{role.name}` es un rol de bot/integración")
     if role.position >= me.top_role.position:
         return await ctx.send(f"❌ **Jerarquía:** Mi rol `{me.top_role.name}` pos {me.top_role.position} y `{role.name}` pos {role.position}. Súbeme.")
-    if member.top_role.position >= me.top_role.position and member.id!= ctx.guild.owner_id:
-        return await ctx.send(f"❌ No puedo editar a {member.mention} porque su rol `{member.top_role.name}` es más alto que el mío.")
     try:
-        await member.add_roles(role, reason=f"r_add por {ctx.author} - bypass")
+        await member.add_roles(role, reason=f"r_add por {ctx.author}")
         await asyncio.sleep(0.7)
         member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
         if role in member.roles:
@@ -630,7 +664,7 @@ async def estado(ctx):
 🛡️ **AntiNuke** - 🟢 ACTIVO
 🤖 **AntiBot** - 🟢 SOLO OWNER
 🔨 **AntiBan/Kick** - 🟢 ACTIVO
-📢 **AntiEveryone/Links** - 🟢 1ra borra / 2da kick
+📢 **AntiEveryone/Links** - 🟢 5s investiga gif / 2da kick
 🛡️ **Rol Inmune por ID** - {len(IMMUNE_ROLES)} roles
 🎧 **Voz 24/7** - {'🟢 ACTIVO' if str(g.id) in VOICE_CHANNELS else '🔴 INACTIVO'} ({len(VOICE_CHANNELS)} servers)
 📦 **Backup Auto** - DM solo si ataque
