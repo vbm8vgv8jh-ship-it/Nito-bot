@@ -179,7 +179,7 @@ async def on_ready():
                     if guild.voice_client:
                         try: await guild.voice_client.disconnect()
                         except: pass
-                    vc = await channel.connect(self_deaf=True)
+                    vc = await channel.connect(self_deaf=False, self_mute=False)
                     voice_clients[guild.id] = vc
             except: pass
 
@@ -192,7 +192,7 @@ async def on_voice_state_update(member, before, after):
             try:
                 channel = before.channel.guild.get_channel(VOICE_CHANNELS[gid])
                 if channel:
-                    vc = await channel.connect(self_deaf=True)
+                    vc = await channel.connect(self_deaf=False, self_mute=False)
                     voice_clients[before.channel.guild.id] = vc
             except: pass
 
@@ -422,11 +422,11 @@ async def join(ctx):
         if ctx.guild.voice_client:
             try: await ctx.guild.voice_client.disconnect()
             except: pass
-        vc = await ch.connect(self_deaf=True)
+        vc = await ch.connect(self_deaf=False, self_mute=False)
         voice_clients[ctx.guild.id] = vc
         VOICE_CHANNELS[str(ctx.guild.id)] = ch.id
         save_json(VOICE_FILE, VOICE_CHANNELS)
-        await ctx.send(f"🎧 Voz ON en {ch.mention}")
+        await ctx.send(f"🎧 Voz ON en {ch.mention} - SIN SELF DEAF")
     except Exception as ex: await ctx.send(f"Error: {ex}")
 
 @bot.command(name="leave")
@@ -460,12 +460,19 @@ async def tuputamadre(ctx, *, nombre: str = None):
                 file_path = p
                 break
         if not file_path: return await ctx.send(f"No encontré {nombre_safe} - usa _list")
+
+    size = os.path.getsize(file_path)
+    if size < 500: return await ctx.send(f"❌ Archivo corrupto/vacío: {size}b")
+
     try:
-        filtro = 'volume=20dB, highpass=f=100, equalizer=f=2500:g=6:t=h:width=1.5, equalizer=f=4000:g=4:t=h:width=1, acompressor=threshold=-20dB:ratio=20:attack=1:release=15:makeup=10dB, alimiter=limit=0.95:attack=5:release=50, loudnorm=I=-4:TP=-0.5:LRA=3'
-        source = discord.FFmpegPCMAudio(file_path, options=f'-filter:a "{filtro}"')
+        # FIX: SIN FILTROS QUE SILENCIAN, SOLO VOLUMEN 200% LIMPIO
+        source = discord.FFmpegPCMAudio(file_path, options='-vn')
+        source = discord.PCMVolumeTransformer(source, volume=2.0) # 200% GRITO LIMPIO
         vc.play(source)
-        await ctx.send(f"🔊 20dB CLEAN GRITO: `{os.path.basename(file_path)}`")
-    except Exception as e: await ctx.send(f"Error audio: {e}")
+        await ctx.send(f"🔊 **200% VOLUMEN GRITO:** `{os.path.basename(file_path)}`")
+    except Exception as e:
+        await ctx.send(f"Error audio: {e}")
+        print(f"Error FFmpeg: {e}")
 
 @bot.command(name="stop")
 async def stop(ctx):
@@ -788,18 +795,15 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
-    embed = discord.Embed(title="📜 PANEL DE COMANDOS - BOT COMPLETO", description=f"Bot de <@{MY_ID}> | Prefijo `_`", color=0x00ff00)
+    embed = discord.Embed(title="📜 PANEL DE COMANDOS - BOT COMPLETO V4 FIX", description=f"Bot de <@{MY_ID}> | Prefijo `_`", color=0x00ff00)
     embed.add_field(name="🎵 MÚSICA / VOZ [7]", value="`_guardar, _list, _quitar, _join, _leave, _tuputamadre [nombre], _stop`", inline=False)
     embed.add_field(name="🛡️ ROLES [5]", value="`_r_add ID rol, _r_remove ID rol, _role_inmune_add ID, _role_inmune_remove ID, _role_inmune_list`", inline=False)
-    embed.add_field(name="✅ WHITELIST PINGS [3]", value="`_whitelist_pings_add ID, _whitelist_pings_remove ID, _whitelist_pings_list`", inline=False)
-    embed.add_field(name="✅ WHITELIST ROLES [3]", value="`_whitelist_roles_add ID, _whitelist_roles_remove ID, _whitelist_roles_list`", inline=False)
+    embed.add_field(name="✅ WHITELIST [6]", value="`_whitelist_pings_add/remove/list, _whitelist_roles_add/remove/list`", inline=False)
     embed.add_field(name="👑 OWNERS [3]", value="`_owner_add ID, _owner_remove ID, _owner_list`", inline=False)
-    embed.add_field(name="🔨 MODERACIÓN [8]", value="`_ban ID, _unban ID, _kick ID, _purge cantidad, _lock, _unlock, _say texto, _nick ID nick`", inline=False)
+    embed.add_field(name="🔨 MODERACIÓN [8]", value="`_ban ID, _unban ID, _kick ID, _purge, _lock, _unlock, _say, _nick`", inline=False)
     embed.add_field(name="👤 INFO [2]", value="`_userinfo [ID], _serverinfo`", inline=False)
-    embed.add_field(name="💾 BACKUP [1]", value="`_backup create, _backup load`", inline=False)
-    embed.add_field(name="📚 OTROS [1]", value="`_help / _comandos - Este panel`", inline=False)
-    embed.add_field(name="🛡️ ANTINUKE AUTO", value="Protege: Mass Ban/Kick, Delete Channels/Roles, Create Channels/Roles, Bot Add, Roles peligrosos, @everyone/links", inline=False)
-    embed.set_footer(text=f"Total: 30 comandos • Solicitado por {ctx.author}")
+    embed.add_field(name="💾 BACKUP [1]", value="`_backup create / load`", inline=False)
+    embed.set_footer(text=f"Total: 32 comandos FIX audio • Solicitado por {ctx.author}")
     await ctx.send(embed=embed)
 
 @bot.command(name="comandos")
