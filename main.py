@@ -1,4 +1,4 @@
-import os, json, discord, asyncio, time
+import os, json, discord, asyncio, time, yt_dlp
 from discord.ext import commands
 from datetime import datetime, timezone
 from collections import defaultdict
@@ -280,19 +280,15 @@ async def on_message(message):
     if message.author.bot or not message.guild:
         await bot.process_commands(message)
         return
-
     content_lower = message.content.lower()
     is_ping_attempt = "@everyone" in message.content or "@here" in message.content or message.mention_everyone
     is_link_attempt = any(w in content_lower for w in LINK_WORDS)
-
     if not is_ping_attempt and not is_link_attempt:
         await bot.process_commands(message)
         return
-
     if is_pings_allowed(message.guild, message.author.id, message.guild.owner_id):
         await bot.process_commands(message)
         return
-
     if is_link_attempt:
         await asyncio.sleep(5)
         try:
@@ -311,7 +307,6 @@ async def on_message(message):
                         is_real_gif = True
                         break
                     if emb.video or emb.image:
-                        # Si tiene video/imagen y el contenido original era tenor/giphy, es gif
                         if any(g in cl for g in GIF_ALLOW):
                             is_real_gif = True
                             break
@@ -325,7 +320,6 @@ async def on_message(message):
             return
         except:
             pass
-
     pings_warns[message.author.id] += 1
     try: await message.delete()
     except: pass
@@ -382,6 +376,54 @@ async def leave(ctx):
     else:
         e = discord.Embed(description="```\nNo estoy en voz\n```", color=0x2b2d31)
         await ctx.send(embed=e)
+
+# --- TUPUTAMADRE 30dB ---
+@bot.command(name="tuputamadre")
+async def tuputamadre(ctx, *, url: str = None):
+    if not has_perm(ctx): return
+    if not url:
+        return await ctx.send(embed=discord.Embed(description="```\nUso: _tuputamadre (link youtube)\n```", color=0x2b2d31))
+    vc = ctx.guild.voice_client or voice_clients.get(ctx.guild.id)
+    if not vc:
+        return await ctx.send("❌ No estoy en voz, usa `_join` primero")
+    if vc.is_playing():
+        vc.stop()
+    await ctx.send(f"💥 Bajando y saturando a **30dB**: `{url}`")
+    ydl_opts = {
+        'format': 'bestaudio/best',
+        'quiet': True,
+        'noplaylist': True,
+        'default_search': 'ytsearch',
+        'source_address': '0.0.0.0'
+    }
+    try:
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            info = ydl.extract_info(url, download=False)
+            if 'entries' in info:
+                info = info['entries'][0]
+            audio_url = info['url']
+            title = info.get('title', 'Cancion')
+            filtro = 'volume=30dB, bass=gain=30:frequency=100, acrusher=level_in=12:level_out=18:bits=8:mode=log:aa=1'
+            before_opts = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
+            source = discord.FFmpegPCMAudio(audio_url, before_options=before_opts, options=f'-filter:a "{filtro}"')
+            vc.play(source)
+            e = discord.Embed(description=f"**💥 REVENTADO A 30dB**\n\n━━━━━━━━━━━━━━━━━━━━\n🎵 `{title}`\n🔊 `30dB + bass + distorsion`\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
+            await ctx.send(embed=e)
+    except Exception as e:
+        await ctx.send(f"❌ Error: `{e}`")
+
+@bot.command(name="stop")
+async def stop(ctx):
+    if not has_perm(ctx): return
+    vc = ctx.guild.voice_client or voice_clients.get(ctx.guild.id)
+    if not vc:
+        return await ctx.send("❌ No estoy en voz")
+    if vc.is_playing():
+        vc.stop()
+        e = discord.Embed(description="**🔇 Música parada**\n\n━━━━━━━━━━━━━━━━━━━━\nSe detuvo el audio saturado\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+        await ctx.send(embed=e)
+    else:
+        await ctx.send("`No hay nada sonando`")
 
 @bot.command(name="r_add")
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
@@ -598,21 +640,16 @@ async def userinfo(ctx, member: discord.Member = None):
 👤 **Usuario**
 {m.mention}
 `{m.id}`
-
 🏷️ **Nick**
 {m.display_name}
-
 🤖 **Bot**
 {"Si" if m.bot else "No"}
-
 📅 **Cuenta creada**
 {created}
 {ago_c}
-
 📥 **Se unió**
 {joined}
 {ago_j}
-
 🎭 **Roles [{len(roles)}]**
 {roles_txt}
 ━━━━━━━━━━━━━━━━━━━━"""
@@ -630,24 +667,19 @@ async def serverinfo(ctx):
 👑 **Owner**
 {owner.mention}
 `{owner.id}`
-
 🆔 **ID**
 `{g.id}`
-
 📅 **Creado**
 {created}
 {ago}
-
 👥 **Miembros**
 Total: {g.member_count}
 Humanos: {len([m for m in g.members if not m.bot])}
 Bots: {len([m for m in g.members if m.bot])}
-
 📊 **Canales**
 Texto: {len(g.text_channels)}
 Voz: {len(g.voice_channels)}
 Voz 24/7: {'🟢 SI' if str(g.id) in VOICE_CHANNELS else '🔴 NO'}
-
 ✨ **Extras**
 Roles: {len(g.roles)}
 Boosts: {g.premium_subscription_count}
