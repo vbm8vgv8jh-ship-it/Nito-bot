@@ -461,11 +461,10 @@ async def tuputamadre(ctx, *, nombre: str = None):
                 break
         if not file_path: return await ctx.send(f"No encontré {nombre_safe} - usa _list")
     try:
-        # === FILTRO GRITO SUPER SATURADO PERO CLEAN Y ENTENDIBLE ===
-        filtro = 'volume=25dB, highpass=f=120, equalizer=f=2500:g=8:t=h:width=1.5, equalizer=f=4000:g=6:t=h:width=1, acompressor=threshold=-18dB:ratio=12:attack=1:release=15:makeup=8dB, alimiter=limit=0.85, loudnorm=I=-6:TP=-0.5:LRA=4'
+        filtro = 'volume=20dB, highpass=f=100, equalizer=f=2500:g=6:t=h:width=1.5, equalizer=f=4000:g=4:t=h:width=1, acompressor=threshold=-20dB:ratio=20:attack=1:release=15:makeup=10dB, alimiter=limit=0.95:attack=5:release=50, loudnorm=I=-4:TP=-0.5:LRA=3'
         source = discord.FFmpegPCMAudio(file_path, options=f'-filter:a "{filtro}"')
         vc.play(source)
-        await ctx.send(f"🗣️ GRITO {25} dB: `{os.path.basename(file_path)}`")
+        await ctx.send(f"🔊 20dB CLEAN GRITO: `{os.path.basename(file_path)}`")
     except Exception as e: await ctx.send(f"Error audio: {e}")
 
 @bot.command(name="stop")
@@ -514,6 +513,76 @@ async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
         await member.remove_roles(role)
         await ctx.send(f"✅ Rol {role.name} quitado")
     except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="whitelist_pings_add")
+async def whitelist_pings_add(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send("Uso: `_whitelist_pings_add ID`")
+    try: uid=int(user_id)
+    except: return await ctx.send("ID invalido")
+    WHITELIST_PINGS.add(uid)
+    save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
+    await ctx.send(f"✅ Whitelist pings: `{uid}` ya puede usar @everyone y links")
+
+@bot.command(name="whitelist_pings_remove")
+async def whitelist_pings_remove(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send("Uso: `_whitelist_pings_remove ID`")
+    try: uid=int(user_id)
+    except: return await ctx.send("ID invalido")
+    if uid in WHITELIST_PINGS:
+        WHITELIST_PINGS.remove(uid)
+        save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
+        await ctx.send(f"❌ Whitelist pings: `{uid}` removido")
+    else: await ctx.send("No estaba en la lista")
+
+@bot.command(name="whitelist_pings_list")
+async def whitelist_pings_list(ctx):
+    if not has_perm(ctx): return
+    if not WHITELIST_PINGS: return await ctx.send("📭 Whitelist pings vacía")
+    lines=[]
+    for uid in WHITELIST_PINGS:
+        try:
+            u=bot.get_user(uid) or await bot.fetch_user(uid)
+            name=u.name if u else f"ID {uid}"
+        except: name=f"ID {uid}"
+        lines.append(f"{name} (`{uid}`)")
+    await ctx.send("**Whitelist Pings:**\n" + "\n".join(lines))
+
+@bot.command(name="whitelist_roles_add")
+async def whitelist_roles_add(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send("Uso: `_whitelist_roles_add ID`")
+    try: uid=int(user_id)
+    except: return await ctx.send("ID invalido")
+    WHITELIST_ROLES.add(uid)
+    save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
+    await ctx.send(f"✅ Whitelist roles: `{uid}` ya puede dar roles peligrosos")
+
+@bot.command(name="whitelist_roles_remove")
+async def whitelist_roles_remove(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send("Uso: `_whitelist_roles_remove ID`")
+    try: uid=int(user_id)
+    except: return await ctx.send("ID invalido")
+    if uid in WHITELIST_ROLES:
+        WHITELIST_ROLES.remove(uid)
+        save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
+        await ctx.send(f"❌ Whitelist roles: `{uid}` removido")
+    else: await ctx.send("No estaba en la lista")
+
+@bot.command(name="whitelist_roles_list")
+async def whitelist_roles_list(ctx):
+    if not has_perm(ctx): return
+    if not WHITELIST_ROLES: return await ctx.send("📭 Whitelist roles vacía")
+    lines=[]
+    for uid in WHITELIST_ROLES:
+        try:
+            u=bot.get_user(uid) or await bot.fetch_user(uid)
+            name=u.name if u else f"ID {uid}"
+        except: name=f"ID {uid}"
+        lines.append(f"{name} (`{uid}`)")
+    await ctx.send("**Whitelist Roles:**\n" + "\n".join(lines))
 
 @bot.command(name="role_inmune_add")
 async def role_inmune_add(ctx, role_id: str = None):
@@ -568,6 +637,20 @@ async def owner_add(ctx, user_id: str):
     OWNER_IDS.add(uid)
     save_owners()
     await ctx.send(f"Owner Added {uid}")
+
+@bot.command(name="owner_remove")
+async def owner_remove(ctx, user_id: str = None):
+    if ctx.author.id!= MY_ID: return
+    if not user_id: return await ctx.send("Uso: `_owner_remove ID`")
+    try: uid=int(user_id)
+    except: return await ctx.send("ID invalido")
+    if uid == MY_ID: return await ctx.send("No puedes quitarte a ti mismo")
+    if uid in OWNER_IDS:
+        OWNER_IDS.remove(uid)
+        save_owners()
+        await ctx.send(f"❌ Owner removido: `{uid}`")
+    else:
+        await ctx.send("No estaba en la lista")
 
 @bot.command(name="backup")
 async def backup(ctx, action: str = None):
