@@ -461,11 +461,10 @@ async def tuputamadre(ctx, *, nombre: str = None):
                 break
         if not file_path: return await ctx.send(f"No encontré {nombre_safe} - usa _list")
     try:
-        # NIVEL 3 BRUTAL - BOCINA REVENTADA 100% COMPATIBLE
-        filtro = 'volume=30dB, bass=g=20:f=100, treble=g=15:f=3000, equalizer=f=1500:g=12:width=0.7, equalizer=f=2500:g=14:width=0.7, equalizer=f=4000:g=10:width=1, acompressor=threshold=-20dB:ratio=30:attack=0.1:release=20:makeup=20dB, alimiter=limit=0.95'
-        source = discord.FFmpegPCMAudio(file_path, options=f'-filter:a "{filtro}" -vn')
+        source = discord.FFmpegPCMAudio(file_path)
+        source = discord.PCMVolumeTransformer(source, volume=3.0)
         vc.play(source)
-        await ctx.send(f"☠️ **NIVEL 3 BRUTAL BOCINA REVENTADA:** `{os.path.basename(file_path)}`")
+        await ctx.send(f"🔊 **300% VOLUMEN SEGURO:** `{os.path.basename(file_path)}`")
     except Exception as e:
         await ctx.send(f"Error audio: {e}")
 
@@ -790,7 +789,7 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
-    embed = discord.Embed(title="📜 PANEL DE COMANDOS - NIVEL 3 BRUTAL", description=f"Bot de <@{MY_ID}> | Prefijo `_`", color=0xff0000)
+    embed = discord.Embed(title="📜 PANEL - 300% VOLUMEN SEGURO", description=f"Bot de <@{MY_ID}> | Prefijo `_`", color=0x00ff00)
     embed.add_field(name="🎵 MÚSICA / VOZ [7]", value="`_guardar, _list, _quitar, _join, _leave, _tuputamadre [nombre], _stop`", inline=False)
     embed.add_field(name="🛡️ ROLES [5]", value="`_r_add ID rol, _r_remove ID rol, _role_inmune_add ID, _role_inmune_remove ID, _role_inmune_list`", inline=False)
     embed.add_field(name="✅ WHITELIST [6]", value="`_whitelist_pings_add/remove/list, _whitelist_roles_add/remove/list`", inline=False)
@@ -798,7 +797,7 @@ async def help_cmd(ctx):
     embed.add_field(name="🔨 MODERACIÓN [8]", value="`_ban ID, _unban ID, _kick ID, _purge, _lock, _unlock, _say, _nick`", inline=False)
     embed.add_field(name="👤 INFO [2]", value="`_userinfo [ID], _serverinfo`", inline=False)
     embed.add_field(name="💾 BACKUP [1]", value="`_backup create / load`", inline=False)
-    embed.add_field(name="☠️ AUDIO", value="**NIVEL 3 BRUTAL:** 30dB + bass 20 + treble 15 + 3x EQ + compressor 30:1", inline=False)
+    embed.add_field(name="🔊 AUDIO", value="**300% VOLUMEN - GARANTIZADO QUE SUENA**", inline=False)
     embed.set_footer(text=f"Total: 32 comandos • Solicitado por {ctx.author}")
     await ctx.send(embed=embed)
 
