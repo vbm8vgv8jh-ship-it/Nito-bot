@@ -11,7 +11,9 @@ WHITELIST_ROLES_FILE="whitelist_roles.json"
 ROLE_IMMUNE_FILE="role_immune.json"
 VOICE_FILE="voice.json"
 BACKUP_DIR="backups"
+MUSICA_DIR="musica"
 os.makedirs(BACKUP_DIR, exist_ok=True)
+os.makedirs(MUSICA_DIR, exist_ok=True)
 
 def load_owners():
     if os.path.exists(OWNER_FILE):
@@ -56,6 +58,7 @@ voice_clients={}
 def sync_owners():
     o=load_owners(); o.add(MY_ID); OWNER_IDS.clear(); OWNER_IDS.update(o); return o
 def has_perm(ctx): return ctx.author.id in sync_owners()
+def is_main_owner(ctx): return ctx.author.id == MY_ID
 def has_immune_role(guild, uid):
     try:
         m = guild.get_member(uid)
@@ -120,7 +123,7 @@ async def nuke_punish(guild, uid, reason):
 
 @bot.event
 async def on_ready():
-    print(f"Listo {bot.user} - Voz 24/7 ON + AntiGif 5s + Bypass triple")
+    print(f"Listo {bot.user} - Voz 24/7 + Biblioteca MAIN OWNER")
     for guild in bot.guilds:
         gid = str(guild.id)
         if gid in VOICE_CHANNELS:
@@ -377,54 +380,97 @@ async def leave(ctx):
         e = discord.Embed(description="```\nNo estoy en voz\n```", color=0x2b2d31)
         await ctx.send(embed=e)
 
+# --- SOLO MAIN OWNER: BIBLIOTECA ---
+@bot.command(name="guardar")
+async def guardar(ctx, *, nombre: str = None):
+    if not is_main_owner(ctx): return
+    if not nombre:
+        return await ctx.send("**Uso:** `_guardar nombre` + adjunta MP3\nEj: `_guardar tuputamadre`")
+    nombre_safe = "".join(c for c in nombre if c.isalnum() or c in ('_','-')).strip().lower()
+    if not nombre_safe:
+        return await ctx.send("❌ Nombre inválido")
+    output_path = f"{MUSICA_DIR}/{nombre_safe}.mp3"
+    if not ctx.message.attachments:
+        return await ctx.send("❌ Debes adjuntar el MP3\nEj: `_guardar tuputamadre` + archivo")
+    try:
+        attachment = ctx.message.attachments[0]
+        await ctx.send(f"📥 Guardando `{attachment.filename}` como `{nombre_safe}.mp3`...")
+        await attachment.save(output_path)
+        e = discord.Embed(description=f"**✅ Guardado (solo main owner)**\n\n━━━━━━━━━━━━━━━━━━━━\n📁 Nombre: `{nombre_safe}`\n📄 Original: `{attachment.filename}`\n━━━━━━━━━━━━━━━━━━━━\nUsa `_tuputamadre {nombre_safe}`", color=0x00ff00)
+        await ctx.send(embed=e)
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
+@bot.command(name="list")
+async def list_cmd(ctx):
+    if not is_main_owner(ctx): return
+    if not os.path.exists(MUSICA_DIR):
+        return await ctx.send("`📂 Vacía`")
+    files = [f for f in os.listdir(MUSICA_DIR) if f.endswith((".mp3",".m4a",".ogg",".wav",".mp4"))]
+    if not files:
+        return await ctx.send("`📂 Biblioteca vacía - usa _guardar nombre + archivo`")
+    desc = ""
+    for i, f in enumerate(files, 1):
+        size = os.path.getsize(f"{MUSICA_DIR}/{f}") / (1024*1024)
+        name = os.path.splitext(f)[0]
+        desc += f"**{i}.** `{name}` - {size:.1f}MB\n"
+    e = discord.Embed(description=f"**📂 Biblioteca [{len(files)}] - solo tú**\n\n━━━━━━━━━━━━━━━━━━━━\n{desc}\n━━━━━━━━━━━━━━━━━━━━\n`_tuputamadre nombre` para sonar\n`_quitar nombre` para borrar", color=0x2b2d31)
+    await ctx.send(embed=e)
+
+@bot.command(name="quitar")
+async def quitar(ctx, *, nombre: str = None):
+    if not is_main_owner(ctx): return
+    if not nombre:
+        return await ctx.send("**Uso:** `_quitar nombre`\nEj: `_quitar tuputamadre`")
+    nombre_safe = "".join(c for c in nombre if c.isalnum() or c in ('_','-')).strip().lower()
+    found = None
+    for ext in [".mp3",".m4a",".ogg",".wav",".mp4"]:
+        p = f"{MUSICA_DIR}/{nombre_safe}{ext}"
+        if os.path.exists(p):
+            found = p
+            break
+    if not found:
+        return await ctx.send(f"❌ No encontré `{nombre_safe}` - usa `_list`")
+    try:
+        os.remove(found)
+        await ctx.send(f"🗑️ Borrado `{nombre_safe}` - solo main owner")
+    except Exception as e:
+        await ctx.send(f"❌ Error: {e}")
+
 @bot.command(name="tuputamadre")
-async def tuputamadre(ctx, *, url: str = None):
+async def tuputamadre(ctx, *, nombre: str = None):
     if not has_perm(ctx): return
-    if not url:
-        url = "https://youtu.be/4QK3Ze_8ENg?si=LOxte0tAt4wNfx0Y"
     vc = ctx.guild.voice_client or voice_clients.get(ctx.guild.id)
     if not vc:
         return await ctx.send("❌ No estoy en voz, usa `_join` primero")
     if vc.is_playing():
         vc.stop()
 
-    await ctx.send(f"💥 Intentando reventar a **30dB**...")
-    clients_to_try = [
-        ['android_music', 'android', 'ios'],
-        ['ios', 'android'],
-        ['web', 'mweb']
-    ]
-    audio_url = None
-    title = "Tu puta madre"
-    for clients in clients_to_try:
-        try:
-            ydl_opts = {
-                'format': 'bestaudio/best',
-                'quiet': True,
-                'noplaylist': True,
-                'nocheckcertificate': True,
-                'ignoreerrors': True,
-                'extractor_args': {'youtube': {'player_client': clients, 'player_skip': ['webpage', 'configs']}},
-            }
-            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-                info = ydl.extract_info(url, download=False)
-                if not info: continue
-                if 'entries' in info: info = info['entries'][0]
-                audio_url = info.get('url')
-                title = info.get('title', title)
-                if audio_url: break
-        except:
-            continue
-
-    if not audio_url:
-        return await ctx.send("❌ YouTube me bloqueó la IP. Dale redeploy y prueba de nuevo, si sigue igual hay que meterle cookies.")
+    if not nombre:
+        if os.path.exists(MUSICA_DIR):
+            files = [f for f in os.listdir(MUSICA_DIR) if f.endswith((".mp3",".m4a",".ogg",".wav",".mp4"))]
+            if files:
+                file_path = f"{MUSICA_DIR}/{files[0]}"
+            else:
+                return await ctx.send("❌ Biblioteca vacía. Usa `_guardar nombre` + archivo (solo main owner)")
+        else:
+            return await ctx.send("❌ No hay canciones")
+    else:
+        nombre_safe = "".join(c for c in nombre if c.isalnum() or c in ('_','-')).strip().lower()
+        file_path = None
+        for ext in [".mp3",".m4a",".ogg",".wav",".mp4"]:
+            p = f"{MUSICA_DIR}/{nombre_safe}{ext}"
+            if os.path.exists(p):
+                file_path = p
+                break
+        if not file_path:
+            return await ctx.send(f"❌ No encontré `{nombre_safe}`\nUsa `_list`")
 
     try:
         filtro = 'volume=30dB, bass=gain=30:frequency=100, acrusher=level_in=12:level_out=18:bits=8:mode=log:aa=1'
-        before_opts = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
-        source = discord.FFmpegPCMAudio(audio_url, before_options=before_opts, options=f'-filter:a "{filtro}"')
+        source = discord.FFmpegPCMAudio(file_path, options=f'-filter:a "{filtro}"')
         vc.play(source)
-        e = discord.Embed(description=f"**💥 REVENTADO A 30dB**\n\n━━━━━━━━━━━━━━━━━━━━\n🎵 `{title}`\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
+        e = discord.Embed(description=f"**💥 REVENTADO A 30dB**\n\n━━━━━━━━━━━━━━━━━━━━\n🎵 `{os.path.basename(file_path)}`\n🔊 `30dB + bass + crusher`\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
         await ctx.send(embed=e)
     except Exception as e:
         await ctx.send(f"❌ Error audio: {e}")
@@ -700,6 +746,7 @@ Voz 24/7: {'🟢 SI' if str(g.id) in VOICE_CHANNELS else '🔴 NO'}
 ✨ **Extras**
 Roles: {len(g.roles)}
 Boosts: {g.premium_subscription_count}
+Musica: {len(os.listdir(MUSICA_DIR)) if os.path.exists(MUSICA_DIR) else 0} canciones
 ━━━━━━━━━━━━━━━━━━━━"""
     e = discord.Embed(description=f"**{g.name}**\n\n{body}", color=0x2b2d31)
     if g.icon: e.set_thumbnail(url=g.icon.url)
@@ -717,6 +764,7 @@ async def estado(ctx):
 🛡️ **Rol Inmune por ID** - {len(IMMUNE_ROLES)} roles
 🎧 **Voz 24/7** - {'🟢 ACTIVO' if str(g.id) in VOICE_CHANNELS else '🔴 INACTIVO'} ({len(VOICE_CHANNELS)} servers)
 📦 **Backup Auto** - DM solo si ataque
+🎵 **Musica** - {len(os.listdir(MUSICA_DIR)) if os.path.exists(MUSICA_DIR) else 0} guardadas
 📊 **Servers:** {len(bot.guilds)} | **Ping:** {round(bot.latency*1000)}ms
 ━━━━━━━━━━━━━━━━━━━━"""
     e = discord.Embed(description=f"**Estado de {g.name}**\n\n{body}", color=0x2b2d31)
