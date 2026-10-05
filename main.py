@@ -462,10 +462,10 @@ async def tuputamadre(ctx, *, nombre: str = None):
         if not file_path: return await ctx.send(f"No encontré {nombre_safe} - usa _list")
     try:
         # === FILTRO GRITO SUPER SATURADO PERO CLEAN Y ENTENDIBLE ===
-        filtro = 'volume=16dB, highpass=f=120, equalizer=f=2500:g=8:t=h:width=1.5, equalizer=f=4000:g=6:t=h:width=1, acompressor=threshold=-18dB:ratio=12:attack=1:release=15:makeup=8dB, alimiter=limit=0.85, loudnorm=I=-6:TP=-0.5:LRA=4'
+        filtro = 'volume=25dB, highpass=f=120, equalizer=f=2500:g=8:t=h:width=1.5, equalizer=f=4000:g=6:t=h:width=1, acompressor=threshold=-18dB:ratio=12:attack=1:release=15:makeup=8dB, alimiter=limit=0.85, loudnorm=I=-6:TP=-0.5:LRA=4'
         source = discord.FFmpegPCMAudio(file_path, options=f'-filter:a "{filtro}"')
         vc.play(source)
-        await ctx.send(f"🗣️ GRITO {16} dB: `{os.path.basename(file_path)}`")
+        await ctx.send(f"🗣️ GRITO {25} dB: `{os.path.basename(file_path)}`")
     except Exception as e: await ctx.send(f"Error audio: {e}")
 
 @bot.command(name="stop")
