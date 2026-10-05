@@ -461,8 +461,8 @@ async def tuputamadre(ctx, *, nombre: str = None):
                 break
         if not file_path: return await ctx.send(f"No encontré {nombre_safe} - usa _list")
     try:
-        source = discord.FFmpegPCMAudio(file_path, options='-filter:a "volume=30dB"')
-        source = discord.PCMVolumeTransformer(source, volume=25.0)
+        source = discord.FFmpegPCMAudio(file_path, options='-filter:a "volume=25dB"')
+        source = discord.PCMVolumeTransformer(source, volume=30.0)
         vc.play(source)
         await ctx.send(f"💀 **5000% DOBLE SATURACIÓN:** `{os.path.basename(file_path)}`")
     except Exception as e:
