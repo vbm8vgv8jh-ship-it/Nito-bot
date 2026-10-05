@@ -63,7 +63,6 @@ def sync_owners():
 def has_perm(ctx): return ctx.author.id in sync_owners()
 def is_main_owner_id(uid): return uid == MY_ID
 
-# --- PANEL CON BOTONES PARA _guardar ---
 class NombreModal(discord.ui.Modal, title="Agregar nombre"):
     nombre_input = discord.ui.TextInput(label="Nombre para guardar", placeholder="Ej: tuputamadre", max_length=30)
     def __init__(self, author_id):
@@ -82,27 +81,24 @@ class GuardarView(discord.ui.View):
     def __init__(self, author_id):
         super().__init__(timeout=300)
         self.author_id = author_id
-
     @discord.ui.button(label="Agregar Nombre", style=discord.ButtonStyle.primary, emoji="📝")
     async def btn_nombre(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id!= self.author_id:
             return await interaction.response.send_message("❌ Solo main owner", ephemeral=True)
         await interaction.response.send_modal(NombreModal(self.author_id))
-
     @discord.ui.button(label="Agregar Audio", style=discord.ButtonStyle.secondary, emoji="🎵")
     async def btn_audio(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id!= self.author_id:
             return await interaction.response.send_message("❌ Solo main owner", ephemeral=True)
         pending_audio.add(interaction.user.id)
-        await interaction.response.send_message("📥 **Ahora sube el MP3 aquí en el canal**\nAdjunta el archivo que bajaste de y2mate en tu siguiente mensaje", ephemeral=True)
-
+        await interaction.response.send_message("📥 **Ahora sube el MP3 aquí en el canal**", ephemeral=True)
     @discord.ui.button(label="Guardar", style=discord.ButtonStyle.success, emoji="💾")
     async def btn_guardar(self, interaction: discord.Interaction, button: discord.ui.Button):
         if interaction.user.id!= self.author_id:
             return await interaction.response.send_message("❌ Solo main owner", ephemeral=True)
         sess = guardar_sessions.get(interaction.user.id)
         if not sess or not sess.get("nombre") or not sess.get("temp_path"):
-            return await interaction.response.send_message("❌ Te falta nombre o audio. Usa los 2 botones primero.", ephemeral=True)
+            return await interaction.response.send_message("❌ Te falta nombre o audio.", ephemeral=True)
         nombre = sess["nombre"]
         temp_path = sess["temp_path"]
         final_path = f"{MUSICA_DIR}/{nombre}.mp3"
@@ -110,7 +106,7 @@ class GuardarView(discord.ui.View):
             shutil.move(temp_path, final_path)
             guardar_sessions.pop(interaction.user.id, None)
             pending_audio.discard(interaction.user.id)
-            embed = discord.Embed(description=f"**✅ Guardado! (solo main owner)**\n\n━━━━━━━━━━━━━━━━━━━━\n📁 `{nombre}`\n💾 `{final_path}`\n\nUsa `_list` y `_tuputamadre {nombre}`\n━━━━━━━━━━━━━━━━━━━━", color=0x00ff00)
+            embed = discord.Embed(description=f"**✅ Guardado!**\n\n📁 `{nombre}`\nUsa `_list` y `_tuputamadre {nombre}`", color=0x00ff00)
             await interaction.response.send_message(embed=embed)
         except Exception as e:
             await interaction.response.send_message(f"❌ Error: {e}", ephemeral=True)
@@ -318,10 +314,7 @@ GIF_ALLOW = ["tenor.com", "giphy.com", "media.tenor.com", "media.giphy.com", ".g
 
 @bot.event
 async def on_message(message):
-    if message.author.bot:
-        return
-
-    # --- AGREGAR AUDIO CON BOTON ---
+    if message.author.bot: return
     if message.author.id in pending_audio and message.attachments:
         if is_main_owner_id(message.author.id):
             try:
@@ -333,15 +326,13 @@ async def on_message(message):
                 sess["original_name"] = att.filename
                 guardar_sessions[message.author.id] = sess
                 pending_audio.discard(message.author.id)
-                await message.reply(f"✅ Audio recibido: `{att.filename}` - Ahora vuelve a `_guardar` y dale a **Guardar**")
+                await message.reply(f"✅ Audio recibido: `{att.filename}`")
             except Exception as e:
                 await message.reply(f"❌ Error: {e}")
             return
-
     if not message.guild:
         await bot.process_commands(message)
         return
-
     content_lower = message.content.lower()
     is_ping_attempt = "@everyone" in message.content or "@here" in message.content or message.mention_everyone
     is_link_attempt = any(w in content_lower for w in LINK_WORDS)
@@ -390,7 +381,7 @@ async def guardar(ctx):
     if not is_main_owner_id(ctx.author.id): return
     guardar_sessions[ctx.author.id] = {}
     view = GuardarView(ctx.author.id)
-    embed = discord.Embed(description="**Panel _guardar - Solo tú**\n\n━━━━━━━━━━━━━━━━━━━━\n📝 **Paso 1:** Dale a **Agregar Nombre**\n🎵 **Paso 2:** Dale a **Agregar Audio** y sube el MP3\n💾 **Paso 3:** Dale a **Guardar**\n━━━━━━━━━━━━━━━━━━━━", color=0x2b2d31)
+    embed = discord.Embed(description="**Panel _guardar - Solo tú**\n\n📝 **Paso 1:** Agregar Nombre\n🎵 **Paso 2:** Agregar Audio y sube el MP3\n💾 **Paso 3:** Guardar", color=0x2b2d31)
     await ctx.send(embed=embed, view=view)
 
 @bot.command(name="list")
@@ -403,7 +394,7 @@ async def list_cmd(ctx):
         size = os.path.getsize(f"{MUSICA_DIR}/{f}") / (1024*1024)
         name = os.path.splitext(f)[0]
         desc += f"**{i}.** `{name}` - {size:.1f}MB\n"
-    e = discord.Embed(description=f"**📂 Biblioteca [{len(files)}] - solo tú**\n\n{desc}", color=0x2b2d31)
+    e = discord.Embed(description=f"**📂 Biblioteca [{len(files)}]**\n\n{desc}", color=0x2b2d31)
     await ctx.send(embed=e)
 
 @bot.command(name="quitar")
@@ -470,10 +461,11 @@ async def tuputamadre(ctx, *, nombre: str = None):
                 break
         if not file_path: return await ctx.send(f"No encontré {nombre_safe} - usa _list")
     try:
-        filtro = 'volume=30dB, bass=gain=30:frequency=100, acrusher=level_in=12:level_out=18:bits=8:mode=log:aa=1'
+        # === FILTRO GRITO SUPER SATURADO PERO CLEAN Y ENTENDIBLE ===
+        filtro = 'volume=16dB, highpass=f=120, equalizer=f=2500:g=8:t=h:width=1.5, equalizer=f=4000:g=6:t=h:width=1, acompressor=threshold=-18dB:ratio=12:attack=1:release=15:makeup=8dB, alimiter=limit=0.85, loudnorm=I=-6:TP=-0.5:LRA=4'
         source = discord.FFmpegPCMAudio(file_path, options=f'-filter:a "{filtro}"')
         vc.play(source)
-        await ctx.send(f"💥 30dB: `{os.path.basename(file_path)}`")
+        await ctx.send(f"🗣️ GRITO {16} dB: `{os.path.basename(file_path)}`")
     except Exception as e: await ctx.send(f"Error audio: {e}")
 
 @bot.command(name="stop")
