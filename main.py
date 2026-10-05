@@ -462,9 +462,9 @@ async def tuputamadre(ctx, *, nombre: str = None):
         if not file_path: return await ctx.send(f"No encontré {nombre_safe} - usa _list")
     try:
         source = discord.FFmpegPCMAudio(file_path)
-        source = discord.PCMVolumeTransformer(source, volume=3.0)
+        source = discord.PCMVolumeTransformer(source, volume=10.0)
         vc.play(source)
-        await ctx.send(f"🔊 **300% VOLUMEN SEGURO:** `{os.path.basename(file_path)}`")
+        await ctx.send(f"☠️ **1000% SATURADO CLIPPING BRUTAL:** `{os.path.basename(file_path)}`")
     except Exception as e:
         await ctx.send(f"Error audio: {e}")
 
@@ -789,7 +789,7 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
-    embed = discord.Embed(title="📜 PANEL - 300% VOLUMEN SEGURO", description=f"Bot de <@{MY_ID}> | Prefijo `_`", color=0x00ff00)
+    embed = discord.Embed(title="📜 PANEL - 1000% SATURADO", description=f"Bot de <@{MY_ID}> | Prefijo `_`", color=0xff0000)
     embed.add_field(name="🎵 MÚSICA / VOZ [7]", value="`_guardar, _list, _quitar, _join, _leave, _tuputamadre [nombre], _stop`", inline=False)
     embed.add_field(name="🛡️ ROLES [5]", value="`_r_add ID rol, _r_remove ID rol, _role_inmune_add ID, _role_inmune_remove ID, _role_inmune_list`", inline=False)
     embed.add_field(name="✅ WHITELIST [6]", value="`_whitelist_pings_add/remove/list, _whitelist_roles_add/remove/list`", inline=False)
@@ -797,7 +797,7 @@ async def help_cmd(ctx):
     embed.add_field(name="🔨 MODERACIÓN [8]", value="`_ban ID, _unban ID, _kick ID, _purge, _lock, _unlock, _say, _nick`", inline=False)
     embed.add_field(name="👤 INFO [2]", value="`_userinfo [ID], _serverinfo`", inline=False)
     embed.add_field(name="💾 BACKUP [1]", value="`_backup create / load`", inline=False)
-    embed.add_field(name="🔊 AUDIO", value="**300% VOLUMEN - GARANTIZADO QUE SUENA**", inline=False)
+    embed.add_field(name="☠️ AUDIO", value="**1000% VOLUMEN CLIPPING = SATURACIÓN BRUTAL**", inline=False)
     embed.set_footer(text=f"Total: 32 comandos • Solicitado por {ctx.author}")
     await ctx.send(embed=embed)
 
