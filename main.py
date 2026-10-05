@@ -670,4 +670,140 @@ async def backup(ctx, action: str = None):
                 except: pass
         await ctx.send("Backup cargado")
 
+@bot.command(name="userinfo")
+async def userinfo(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    try:
+        if user_id:
+            uid=int(user_id)
+            member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+        else:
+            member=ctx.author
+        roles = ", ".join([r.mention for r in member.roles if not r.is_default()][:10])
+        e = discord.Embed(title=f"👤 {member}", color=0x2b2d31)
+        e.set_thumbnail(url=member.display_avatar.url)
+        e.add_field(name="ID", value=f"`{member.id}`", inline=True)
+        e.add_field(name="Cuenta creada", value=f"<t:{int(member.created_at.timestamp())}:R>", inline=True)
+        e.add_field(name="Se unió", value=f"<t:{int(member.joined_at.timestamp())}:R>" if member.joined_at else "N/A", inline=True)
+        e.add_field(name=f"Roles [{len(member.roles)-1}]", value=roles or "Ninguno", inline=False)
+        e.add_field(name="¿Es inmune?", value="✅ Sí" if has_immune_role(ctx.guild, member.id) else "❌ No", inline=True)
+        e.add_field(name="¿Es Owner?", value="✅ Sí" if member.id in OWNER_IDS else "❌ No", inline=True)
+        await ctx.send(embed=e)
+    except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="serverinfo")
+async def serverinfo(ctx):
+    if not has_perm(ctx): return
+    g=ctx.guild
+    e=discord.Embed(title=f"📊 {g.name}", color=0x2b2d31)
+    if g.icon: e.set_thumbnail(url=g.icon.url)
+    e.add_field(name="ID", value=f"`{g.id}`", inline=True)
+    e.add_field(name="Owner", value=f"<@{g.owner_id}>", inline=True)
+    e.add_field(name="Creado", value=f"<t:{int(g.created_at.timestamp())}:R>", inline=True)
+    e.add_field(name="Miembros", value=f"👥 {g.member_count}", inline=True)
+    e.add_field(name="Canales", value=f"📁 {len(g.channels)}", inline=True)
+    e.add_field(name="Roles", value=f"🎭 {len(g.roles)}", inline=True)
+    e.add_field(name="Boosts", value=f"✨ {g.premium_subscription_count}", inline=True)
+    e.add_field(name="Emojis", value=f"😀 {len(g.emojis)}", inline=True)
+    await ctx.send(embed=e)
+
+@bot.command(name="ban")
+async def ban_cmd(ctx, user_id: str = None, *, reason: str = "No reason"):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send("Uso: `_ban ID razon`")
+    try:
+        uid=int(user_id)
+        if is_safe(uid, ctx.guild.owner_id): return await ctx.send("No puedo banear a owner/inmune")
+        m=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+        await ctx.guild.ban(m, reason=reason)
+        await ctx.send(f"🔨 Baneado `{uid}` | {reason}")
+    except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="unban")
+async def unban_cmd(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send("Uso: `_unban ID`")
+    try:
+        uid=int(user_id)
+        user=await bot.fetch_user(uid)
+        await ctx.guild.unban(user)
+        await ctx.send(f"✅ Unbaneado `{uid}`")
+    except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="kick")
+async def kick_cmd(ctx, user_id: str = None, *, reason: str = "No reason"):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send("Uso: `_kick ID`")
+    try:
+        uid=int(user_id)
+        if is_safe(uid, ctx.guild.owner_id): return await ctx.send("No puedo kickear a owner/inmune")
+        m=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+        await m.kick(reason=reason)
+        await ctx.send(f"👢 Kickeado `{uid}`")
+    except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="purge")
+async def purge(ctx, amount: int = 10):
+    if not has_perm(ctx): return
+    try:
+        deleted = await ctx.channel.purge(limit=amount+1)
+        await ctx.send(f"🗑️ {len(deleted)-1} mensajes borrados", delete_after=3)
+    except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="lock")
+async def lock(ctx):
+    if not has_perm(ctx): return
+    try:
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=False)
+        await ctx.send("🔒 Canal bloqueado")
+    except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="unlock")
+async def unlock(ctx):
+    if not has_perm(ctx): return
+    try:
+        await ctx.channel.set_permissions(ctx.guild.default_role, send_messages=True)
+        await ctx.send("🔓 Canal desbloqueado")
+    except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="say")
+async def say(ctx, *, text: str = None):
+    if not has_perm(ctx): return
+    if not text: return
+    try: await ctx.message.delete()
+    except: pass
+    await ctx.send(text)
+
+@bot.command(name="nick")
+async def nick(ctx, user_id: str = None, *, new_nick: str = None):
+    if not has_perm(ctx): return
+    if not user_id or not new_nick: return await ctx.send("Uso: `_nick ID nuevo_nick`")
+    try:
+        uid=int(user_id)
+        m=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+        await m.edit(nick=new_nick)
+        await ctx.send(f"✏️ Nick de {m.mention} cambiado a `{new_nick}`")
+    except Exception as ex: await ctx.send(f"Error: {ex}")
+
+@bot.command(name="help")
+async def help_cmd(ctx):
+    if not has_perm(ctx): return
+    embed = discord.Embed(title="📜 PANEL DE COMANDOS - BOT COMPLETO", description=f"Bot de <@{MY_ID}> | Prefijo `_`", color=0x00ff00)
+    embed.add_field(name="🎵 MÚSICA / VOZ [7]", value="`_guardar, _list, _quitar, _join, _leave, _tuputamadre [nombre], _stop`", inline=False)
+    embed.add_field(name="🛡️ ROLES [5]", value="`_r_add ID rol, _r_remove ID rol, _role_inmune_add ID, _role_inmune_remove ID, _role_inmune_list`", inline=False)
+    embed.add_field(name="✅ WHITELIST PINGS [3]", value="`_whitelist_pings_add ID, _whitelist_pings_remove ID, _whitelist_pings_list`", inline=False)
+    embed.add_field(name="✅ WHITELIST ROLES [3]", value="`_whitelist_roles_add ID, _whitelist_roles_remove ID, _whitelist_roles_list`", inline=False)
+    embed.add_field(name="👑 OWNERS [3]", value="`_owner_add ID, _owner_remove ID, _owner_list`", inline=False)
+    embed.add_field(name="🔨 MODERACIÓN [8]", value="`_ban ID, _unban ID, _kick ID, _purge cantidad, _lock, _unlock, _say texto, _nick ID nick`", inline=False)
+    embed.add_field(name="👤 INFO [2]", value="`_userinfo [ID], _serverinfo`", inline=False)
+    embed.add_field(name="💾 BACKUP [1]", value="`_backup create, _backup load`", inline=False)
+    embed.add_field(name="📚 OTROS [1]", value="`_help / _comandos - Este panel`", inline=False)
+    embed.add_field(name="🛡️ ANTINUKE AUTO", value="Protege: Mass Ban/Kick, Delete Channels/Roles, Create Channels/Roles, Bot Add, Roles peligrosos, @everyone/links", inline=False)
+    embed.set_footer(text=f"Total: 30 comandos • Solicitado por {ctx.author}")
+    await ctx.send(embed=embed)
+
+@bot.command(name="comandos")
+async def comandos_cmd(ctx):
+    await help_cmd(ctx)
+
 bot.run(TOKEN)
