@@ -377,12 +377,12 @@ async def leave(ctx):
         e = discord.Embed(description="```\nNo estoy en voz\n```", color=0x2b2d31)
         await ctx.send(embed=e)
 
-# --- TUPUTAMADRE 30dB ---
+# --- FIX PARA MOVIL: CLIENTE ANDROID = NO PIDE COOKIES ---
 @bot.command(name="tuputamadre")
 async def tuputamadre(ctx, *, url: str = None):
     if not has_perm(ctx): return
     if not url:
-        return await ctx.send(embed=discord.Embed(description="```\nUso: _tuputamadre (link youtube)\n```", color=0x2b2d31))
+        url = "https://youtu.be/4QK3Ze_8ENg?si=LOxte0tAt4wNfx0Y"
     vc = ctx.guild.voice_client or voice_clients.get(ctx.guild.id)
     if not vc:
         return await ctx.send("❌ No estoy en voz, usa `_join` primero")
@@ -393,8 +393,8 @@ async def tuputamadre(ctx, *, url: str = None):
         'format': 'bestaudio/best',
         'quiet': True,
         'noplaylist': True,
-        'default_search': 'ytsearch',
-        'source_address': '0.0.0.0'
+        'source_address': '0.0.0.0',
+        'extractor_args': {'youtube': {'player_client': ['android']}},
     }
     try:
         with yt_dlp.YoutubeDL(ydl_opts) as ydl:
