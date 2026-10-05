@@ -120,7 +120,7 @@ async def nuke_punish(guild, uid, reason):
 
 @bot.event
 async def on_ready():
-    print(f"Listo {bot.user} - Voz 24/7 ON + AntiGif 5s")
+    print(f"Listo {bot.user} - Voz 24/7 ON + AntiGif 5s + Bypass triple")
     for guild in bot.guilds:
         gid = str(guild.id)
         if gid in VOICE_CHANNELS:
@@ -377,7 +377,6 @@ async def leave(ctx):
         e = discord.Embed(description="```\nNo estoy en voz\n```", color=0x2b2d31)
         await ctx.send(embed=e)
 
-# --- FIX PARA MOVIL: CLIENTE ANDROID = NO PIDE COOKIES ---
 @bot.command(name="tuputamadre")
 async def tuputamadre(ctx, *, url: str = None):
     if not has_perm(ctx): return
@@ -388,29 +387,47 @@ async def tuputamadre(ctx, *, url: str = None):
         return await ctx.send("❌ No estoy en voz, usa `_join` primero")
     if vc.is_playing():
         vc.stop()
-    await ctx.send(f"💥 Bajando y saturando a **30dB**: `{url}`")
-    ydl_opts = {
-        'format': 'bestaudio/best',
-        'quiet': True,
-        'noplaylist': True,
-        'source_address': '0.0.0.0',
-        'extractor_args': {'youtube': {'player_client': ['android']}},
-    }
+
+    await ctx.send(f"💥 Intentando reventar a **30dB**...")
+    clients_to_try = [
+        ['android_music', 'android', 'ios'],
+        ['ios', 'android'],
+        ['web', 'mweb']
+    ]
+    audio_url = None
+    title = "Tu puta madre"
+    for clients in clients_to_try:
+        try:
+            ydl_opts = {
+                'format': 'bestaudio/best',
+                'quiet': True,
+                'noplaylist': True,
+                'nocheckcertificate': True,
+                'ignoreerrors': True,
+                'extractor_args': {'youtube': {'player_client': clients, 'player_skip': ['webpage', 'configs']}},
+            }
+            with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+                info = ydl.extract_info(url, download=False)
+                if not info: continue
+                if 'entries' in info: info = info['entries'][0]
+                audio_url = info.get('url')
+                title = info.get('title', title)
+                if audio_url: break
+        except:
+            continue
+
+    if not audio_url:
+        return await ctx.send("❌ YouTube me bloqueó la IP. Dale redeploy y prueba de nuevo, si sigue igual hay que meterle cookies.")
+
     try:
-        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
-            info = ydl.extract_info(url, download=False)
-            if 'entries' in info:
-                info = info['entries'][0]
-            audio_url = info['url']
-            title = info.get('title', 'Cancion')
-            filtro = 'volume=30dB, bass=gain=30:frequency=100, acrusher=level_in=12:level_out=18:bits=8:mode=log:aa=1'
-            before_opts = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
-            source = discord.FFmpegPCMAudio(audio_url, before_options=before_opts, options=f'-filter:a "{filtro}"')
-            vc.play(source)
-            e = discord.Embed(description=f"**💥 REVENTADO A 30dB**\n\n━━━━━━━━━━━━━━━━━━━━\n🎵 `{title}`\n🔊 `30dB + bass + distorsion`\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
-            await ctx.send(embed=e)
+        filtro = 'volume=30dB, bass=gain=30:frequency=100, acrusher=level_in=12:level_out=18:bits=8:mode=log:aa=1'
+        before_opts = '-reconnect 1 -reconnect_streamed 1 -reconnect_delay_max 5'
+        source = discord.FFmpegPCMAudio(audio_url, before_options=before_opts, options=f'-filter:a "{filtro}"')
+        vc.play(source)
+        e = discord.Embed(description=f"**💥 REVENTADO A 30dB**\n\n━━━━━━━━━━━━━━━━━━━━\n🎵 `{title}`\n━━━━━━━━━━━━━━━━━━━━", color=0xff0000)
+        await ctx.send(embed=e)
     except Exception as e:
-        await ctx.send(f"❌ Error: `{e}`")
+        await ctx.send(f"❌ Error audio: {e}")
 
 @bot.command(name="stop")
 async def stop(ctx):
