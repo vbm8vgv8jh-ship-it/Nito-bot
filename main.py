@@ -63,9 +63,14 @@ def sync_owners():
 def has_perm(ctx): return ctx.author.id in sync_owners()
 def is_main_owner_id(uid): return uid == MY_ID
 
-# CUADRO AZUL MARINO ORIGINAL
+# ESTILO ANTIGUO ORDENADO
 def embed_chido(text):
-    return discord.Embed(description=f"```\n( {text} )\n```", color=0x0b0b0b)
+    return discord.Embed(description=f"( {text} )", color=0x0b0b0b)
+
+def embed_list_ordered(title, lines):
+    e = discord.Embed(title=title, color=0x0b0b0b)
+    e.description = "\n".join(lines) if lines else "( empty )"
+    return e
 
 async def get_name(guild, uid):
     try:
@@ -351,7 +356,6 @@ async def on_message(message):
                 await att.save(temp_path)
                 sess = guardar_sessions.get(message.author.id, {})
                 sess["temp_path"] = temp_path
-                sess["original_name"] = att.filename
                 guardar_sessions[message.author.id] = sess
                 pending_audio.discard(message.author.id)
                 await message.reply(embed=embed_chido(f"{att.filename} received"))
@@ -417,8 +421,8 @@ async def list_cmd(ctx):
     if not is_main_owner_id(ctx.author.id): return
     files = [f for f in os.listdir(MUSICA_DIR) if f.endswith((".mp3",".m4a",".ogg",".wav",".mp4"))] if os.path.exists(MUSICA_DIR) else []
     if not files: return await ctx.send(embed=embed_chido("library empty - use _guardar"))
-    lines = [f"({os.path.splitext(f)[0]})" for f in files]
-    e = discord.Embed(title=f"library [{len(files)}]", description=f"```\n" + "\n".join(lines) + "\n```", color=0x0b0b0b)
+    lines = [f"( {os.path.splitext(f)[0]} )" for f in files]
+    e = discord.Embed(title=f"library [{len(files)}]", description="```\n" + "\n".join(lines) + "\n```", color=0x0b0b0b)
     await ctx.send(embed=e)
 
 @bot.command(name="quitar")
@@ -518,7 +522,7 @@ async def r_add(ctx, user_id: str = None, *, role_name: str = None):
     if role.position>=me.top_role.position: return await ctx.send(embed=embed_chido("my role below"))
     try:
         await member.add_roles(role, reason=f"r_add por {ctx.author}")
-        await ctx.send(embed=embed_chido(f"{uid} added as {role.name}"))
+        await ctx.send(embed=embed_chido(f"<@{uid}> added as {role.name}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
 
 @bot.command(name="r_remove")
@@ -536,7 +540,7 @@ async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
     if not role: return await ctx.send(embed=embed_chido("role not found"))
     try:
         await member.remove_roles(role)
-        await ctx.send(embed=embed_chido(f"{uid} removed from {role.name}"))
+        await ctx.send(embed=embed_chido(f"<@{uid}> removed from {role.name}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
 
 @bot.command(name="whitelist_add")
@@ -545,16 +549,15 @@ async def whitelist_add(ctx, tipo: str = None, user_id: str = None):
     if not tipo or not user_id: return await ctx.send(embed=embed_chido("usage _whitelist_add r/p ID"))
     try: uid=int(user_id)
     except: return await ctx.send(embed=embed_chido("invalid id"))
-    name = await get_name(ctx.guild, uid)
     tipo=tipo.lower()
     if tipo=="r" or tipo=="roles":
         WHITELIST_ROLES.add(uid)
         save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
-        await ctx.send(embed=embed_chido(f"({name}) {uid} added as whitelist roles"))
+        await ctx.send(embed=embed_chido(f"( {uid} ) added as whitelist roles"))
     elif tipo=="p" or tipo=="pings":
         WHITELIST_PINGS.add(uid)
         save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
-        await ctx.send(embed=embed_chido(f"({name}) {uid} added as whitelist pings"))
+        await ctx.send(embed=embed_chido(f"( {uid} ) added as whitelist pings"))
     else:
         await ctx.send(embed=embed_chido("use r for roles, p for pings"))
 
@@ -564,19 +567,18 @@ async def whitelist_remove(ctx, tipo: str = None, user_id: str = None):
     if not tipo or not user_id: return await ctx.send(embed=embed_chido("usage _whitelist_remove r/p ID"))
     try: uid=int(user_id)
     except: return await ctx.send(embed=embed_chido("invalid id"))
-    name = await get_name(ctx.guild, uid)
     tipo=tipo.lower()
     if tipo=="r" or tipo=="roles":
         if uid in WHITELIST_ROLES:
             WHITELIST_ROLES.remove(uid)
             save_set(WHITELIST_ROLES_FILE, WHITELIST_ROLES)
-            await ctx.send(embed=embed_chido(f"({name}) {uid} removed from whitelist roles"))
+            await ctx.send(embed=embed_chido(f"( {uid} ) removed from whitelist roles"))
         else: await ctx.send(embed=embed_chido(f"{uid} not in roles list"))
     elif tipo=="p" or tipo=="pings":
         if uid in WHITELIST_PINGS:
             WHITELIST_PINGS.remove(uid)
             save_set(WHITELIST_PINGS_FILE, WHITELIST_PINGS)
-            await ctx.send(embed=embed_chido(f"({name}) {uid} removed from whitelist pings"))
+            await ctx.send(embed=embed_chido(f"( {uid} ) removed from whitelist pings"))
         else: await ctx.send(embed=embed_chido(f"{uid} not in pings list"))
     else:
         await ctx.send(embed=embed_chido("use r for roles, p for pings"))
@@ -585,15 +587,15 @@ async def whitelist_remove(ctx, tipo: str = None, user_id: str = None):
 async def whitelist_list(ctx):
     if not has_perm(ctx): return
     if not WHITELIST_PINGS:
-        pings_text = "( empty )"
+        pings_lines = ["( empty )"]
     else:
-        pings_text = "\n".join([f"({await get_name(ctx.guild, uid)}) {uid}" for uid in WHITELIST_PINGS])
+        pings_lines = [f"<@{uid}> - ( {uid} )" for uid in WHITELIST_PINGS]
     if not WHITELIST_ROLES:
-        roles_text = "( empty )"
+        roles_lines = ["( empty )"]
     else:
-        roles_text = "\n".join([f"({await get_name(ctx.guild, uid)}) {uid}" for uid in WHITELIST_ROLES])
-    desc = f"( WHITELIST PINGS ) [{len(WHITELIST_PINGS)}]\n{pings_text}\n\n( WHITELIST ROLES ) [{len(WHITELIST_ROLES)}]\n{roles_text}"
-    e = discord.Embed(title="whitelist list", description=f"```\n{desc}\n```", color=0x0b0b0b)
+        roles_lines = [f"<@{uid}> - ( {uid} )" for uid in WHITELIST_ROLES]
+    desc = f"( WHITELIST PINGS ) [{len(WHITELIST_PINGS)}]\n" + "\n".join(pings_lines) + f"\n\n( WHITELIST ROLES ) [{len(WHITELIST_ROLES)}]\n" + "\n".join(roles_lines)
+    e = discord.Embed(title="whitelist list", description=desc, color=0x0b0b0b)
     await ctx.send(embed=e)
 
 @bot.command(name="role_inmune_add")
@@ -610,7 +612,7 @@ async def role_inmune_add(ctx, role_id: str = None):
     for m in ctx.guild.members:
         if any(r.id==rid for r in m.roles):
             immune_cache[m.id]=True
-    await ctx.send(embed=embed_chido(f"({role.name}) {rid} added as immune role"))
+    await ctx.send(embed=embed_chido(f"( {role.name} ) {rid} added as immune role"))
 
 @bot.command(name="role_inmune_remove")
 async def role_inmune_remove(ctx, role_id: str = None):
@@ -628,24 +630,25 @@ async def role_inmune_remove(ctx, role_id: str = None):
 @bot.command(name="role_inmune_list")
 async def role_inmune_list(ctx):
     if not has_perm(ctx): return
-    if not IMMUNE_ROLES: return await ctx.send(embed=embed_chido("immune roles empty"))
-    lines=[]
+    if not IMMUNE_ROLES:
+        return await ctx.send(embed=embed_chido("immune roles empty"))
+    lines = []
     for rid in IMMUNE_ROLES:
-        role=ctx.guild.get_role(rid)
-        rname=role.name if role else "deleted role"
-        lines.append(f"({rname}) {rid}")
-    e = discord.Embed(title="immune roles", description=f"```\n" + "\n".join(lines) + "\n```", color=0x0b0b0b)
+        role = ctx.guild.get_role(rid)
+        if role:
+            lines.append(f"{role.mention} - ( {rid} )")
+        else:
+            lines.append(f"( deleted role ) - ( {rid} )")
+    e = discord.Embed(title="immune roles", description="\n".join(lines), color=0x0b0b0b)
     await ctx.send(embed=e)
 
 @bot.command(name="owner_list")
 async def owner_list(ctx):
     if ctx.author.id!=MY_ID: return
-    if not OWNER_IDS: return await ctx.send(embed=embed_chido("owner list empty"))
-    lines=[]
-    for uid in OWNER_IDS:
-        name=await get_name(ctx.guild, uid)
-        lines.append(f"({name}) {uid}")
-    e = discord.Embed(title="owner list", description=f"```\n" + "\n".join(lines) + "\n```", color=0x0b0b0b)
+    if not OWNER_IDS:
+        return await ctx.send(embed=embed_chido("owner list empty"))
+    lines = [f"<@{uid}> - ( {uid} )" for uid in OWNER_IDS]
+    e = discord.Embed(title="owner list", description="\n".join(lines), color=0x0b0b0b)
     await ctx.send(embed=e)
 
 @bot.command(name="owner_add")
@@ -653,10 +656,9 @@ async def owner_add(ctx, user_id: str):
     if ctx.author.id!=MY_ID: return
     try: uid=int(user_id)
     except: return await ctx.send(embed=embed_chido("invalid id"))
-    name=await get_name(ctx.guild, uid)
     OWNER_IDS.add(uid)
     save_owners()
-    await ctx.send(embed=embed_chido(f"({name}) {uid} added as owner"))
+    await ctx.send(embed=embed_chido(f"( {uid} ) added as owner"))
 
 @bot.command(name="owner_remove")
 async def owner_remove(ctx, user_id: str = None):
@@ -665,13 +667,12 @@ async def owner_remove(ctx, user_id: str = None):
     try: uid=int(user_id)
     except: return await ctx.send(embed=embed_chido("invalid id"))
     if uid == MY_ID: return await ctx.send(embed=embed_chido("cant remove yourself"))
-    name=await get_name(ctx.guild, uid)
     if uid in OWNER_IDS:
         OWNER_IDS.remove(uid)
         save_owners()
-        await ctx.send(embed=embed_chido(f"({name}) {uid} removed from owners"))
+        await ctx.send(embed=embed_chido(f"( {uid} ) removed from owners"))
     else:
-        await ctx.send(embed=embed_chido(f"({name}) {uid} not in owners"))
+        await ctx.send(embed=embed_chido(f"( {uid} ) not in owners"))
 
 @bot.command(name="backup")
 async def backup(ctx, action: str = None):
@@ -782,7 +783,7 @@ async def say(ctx, *, text: str = None):
     if not text: return
     try: await ctx.message.delete()
     except: pass
-    e = discord.Embed(description=f"```\n{text}\n```", color=0x0b0b0b)
+    e = discord.Embed(description=text, color=0x0b0b0b)
     await ctx.send(embed=e)
 
 @bot.command(name="nick")
