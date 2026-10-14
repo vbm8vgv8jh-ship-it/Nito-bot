@@ -23,8 +23,6 @@ def load_guild_map(path):
                 raw=json.load(f)
             if isinstance(raw, dict):
                 return {str(k): set(map(int, v)) for k,v in raw.items()}
-            if isinstance(raw, list):
-                return {}
         except: return {}
     return {}
 def save_guild_map(path, data):
@@ -709,32 +707,38 @@ async def backup(ctx, action: str = None):
                 except: pass
         await ctx.send(embed=embed_chido(f"backup loaded"))
 
+# --- USERINFO ARREGLADO ---
 @bot.command(name="userinfo")
-async def userinfo(ctx, user_id: str = None):
+async def userinfo(ctx, *, user_id: str = None):
     if not has_perm(ctx): return
     try:
         if user_id:
             uid=extract_id(user_id)
+            if not uid:
+                return await ctx.send(embed=embed_chido(f"{user_id} not found"))
             member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
         else:
             member=ctx.author
+
         roles = [r.mention for r in member.roles if r.name!= "@everyone"][::-1]
         roles_str = ", ".join(roles) if roles else "No roles"
         if len(roles_str) > 1024: roles_str = roles_str[:1000] + "..."
         joined = member.joined_at.strftime('%d/%m/%Y %H:%M') if member.joined_at else "Unknown"
         created = member.created_at.strftime('%d/%m/%Y %H:%M')
         status = str(member.status) if hasattr(member, 'status') else "offline"
-        is_owner = is_owner(ctx.guild.id, member.id)
-        is_imm = await is_immune_member(ctx.guild, member.id)
+        check_owner = is_owner(ctx.guild.id, member.id)
+        check_imm = await is_immune_member(ctx.guild, member.id)
+
         e = discord.Embed(title=f"User Info - {member.name}", color=0x0b0b0b)
         e.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
-        e.add_field(name="General", value=f"**Mention:** {member.mention}\n**ID:** ( {member.id} )\n**Tag:** {member}\n**Nick:** {member.display_name}\n**Bot:** {member.bot}\n**Owner:** {is_owner}\n**Immune:** {is_imm}", inline=False)
+        e.add_field(name="General", value=f"**Mention:** {member.mention}\n**ID:** ( {member.id} )\n**Tag:** {member}\n**Nick:** {member.display_name}\n**Bot:** {member.bot}\n**Owner:** {check_owner}\n**Immune:** {check_imm}", inline=False)
         e.add_field(name="Fechas", value=f"**Cuenta creada:** {created}\n**Se unio:** {joined}\n**Boost:** {member.premium_since.strftime('%d/%m/%Y') if member.premium_since else 'No boost'}", inline=False)
         e.add_field(name=f"Roles [{len(member.roles)-1}]", value=roles_str, inline=False)
         e.add_field(name="Permisos clave", value=f"Admin: {member.guild_permissions.administrator}\nBan: {member.guild_permissions.ban_members}\nKick: {member.guild_permissions.kick_members}\nManage Roles: {member.guild_permissions.manage_roles}\nManage Guild: {member.guild_permissions.manage_guild}", inline=False)
         e.set_footer(text=f"Status: {status} | Top Role: {member.top_role.name}")
         await ctx.send(embed=e)
-    except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
+    except Exception as ex:
+        await ctx.send(embed=embed_chido(f"error {ex}"))
 
 @bot.command(name="serverinfo")
 async def serverinfo(ctx):
