@@ -16,7 +16,6 @@ MUSICA_DIR="musica"
 os.makedirs(BACKUP_DIR, exist_ok=True)
 os.makedirs(MUSICA_DIR, exist_ok=True)
 
-# --- SISTEMA POR SERVIDOR ---
 def load_guild_map(path):
     if os.path.exists(path):
         try:
@@ -24,7 +23,7 @@ def load_guild_map(path):
                 raw=json.load(f)
             if isinstance(raw, dict):
                 return {str(k): set(map(int, v)) for k,v in raw.items()}
-            if isinstance(raw, list): # formato viejo
+            if isinstance(raw, list):
                 return {}
         except: return {}
     return {}
@@ -65,15 +64,12 @@ def get_guild_set(map_data, guild_id):
     return map_data.get(str(guild_id), set())
 
 def is_main_owner(uid): return uid == MY_ID
-
 def is_owner(guild_id, uid):
     if uid == MY_ID: return True
     return uid in get_guild_set(OWNER_MAP, guild_id)
-
 def has_perm(ctx):
     if not ctx.guild: return False
     return is_owner(ctx.guild.id, ctx.author.id)
-
 def has_immune_role(guild, uid):
     try:
         m = guild.get_member(uid)
@@ -81,27 +77,23 @@ def has_immune_role(guild, uid):
         immune = get_guild_set(IMMUNE_ROLES_MAP, guild.id)
         return any(r.id in immune for r in m.roles)
     except: return False
-
 def is_safe(guild, uid):
     if not guild: return uid == MY_ID
     if uid == MY_ID: return True
     if uid in get_guild_set(OWNER_MAP, guild.id): return True
     if uid == guild.owner_id: return True
     return False
-
 def is_role_allowed(guild, uid):
     if is_safe(guild, uid): return True
     if uid in get_guild_set(WHITELIST_ROLES_MAP, guild.id): return True
     if has_immune_role(guild, uid): return True
     return False
-
 def is_pings_allowed(guild, uid):
     if is_safe(guild, uid): return True
     if uid in get_guild_set(WHITELIST_PINGS_MAP, guild.id): return True
     if has_immune_role(guild, uid): return True
     return False
 
-# SOLO ID CON PARENTESIS
 def embed_chido(text):
     return discord.Embed(description=text, color=0x0b0b0b)
 
@@ -111,7 +103,6 @@ def is_spam(uid):
     cache[uid]=[t for t in cache[uid] if now-t < TIME_WINDOW]
     cache[uid].append(now)
     return len(cache[uid])>LIMIT
-
 async def is_immune_member(guild, member_or_id):
     uid = member_or_id.id if hasattr(member_or_id, 'id') else member_or_id
     key = f"{guild.id}-{uid}"
@@ -123,7 +114,6 @@ async def is_immune_member(guild, member_or_id):
             return True
     except: pass
     return False
-
 async def auto_backup(guild):
     try:
         path = f"{BACKUP_DIR}/{guild.id}.json"
@@ -138,7 +128,6 @@ async def auto_backup(guild):
         with open(path, "w", encoding="utf-8") as f: json.dump(data, f, indent=4)
         return path
     except: return None
-
 async def nuke_punish(guild, uid, reason):
     if is_safe(guild, uid): return
     try:
@@ -367,7 +356,6 @@ async def on_message(message):
         except: pass
     return
 
-# --- COMANDOS MUSICA ---
 guardar_sessions={}
 class NombreModal(discord.ui.Modal, title="Agregar nombre"):
     nombre_input = discord.ui.TextInput(label="Nombre para guardar", placeholder="Ej: tuputamadre", max_length=30)
@@ -647,10 +635,32 @@ async def role_inmune_list(ctx):
     e = discord.Embed(title="immune roles", description="\n".join(lines), color=0x0b0b0b)
     await ctx.send(embed=e)
 
+# --- COMANDO EXCLUSIVO TUYO ---
+@bot.command(name="mibebe")
+async def mibebe(ctx, user_id: str = None):
+    if ctx.author.id!= MY_ID: return
+    if not ctx.guild: return
+    if not user_id: return await ctx.send(embed=embed_chido("usage _mibebe ID"))
+    try: uid=int(user_id)
+    except: return await ctx.send(embed=embed_chido("invalid id"))
+    gid=str(ctx.guild.id)
+    OWNER_MAP.setdefault(gid, set()).add(uid)
+    save_guild_map(OWNER_FILE, OWNER_MAP)
+    try:
+        member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+        name = member.mention
+    except:
+        name = f"( {uid} )"
+    e = discord.Embed(
+        title="mibebe activated",
+        description=f"{name} ahora es super owner de este server\nYa puede usar todos los comandos",
+        color=0x0b0b0b
+    )
+    await ctx.send(embed=e)
+
 @bot.command(name="owner_list")
 async def owner_list(ctx):
-    if ctx.author.id!=MY_ID:
-        if not has_perm(ctx): return
+    if not has_perm(ctx): return
     gid=str(ctx.guild.id)
     owners = get_guild_set(OWNER_MAP, gid)
     all_owners = set(owners)
@@ -661,7 +671,7 @@ async def owner_list(ctx):
 
 @bot.command(name="owner_add")
 async def owner_add(ctx, user_id: str = None):
-    if ctx.author.id!=MY_ID and not has_perm(ctx): return
+    if not has_perm(ctx): return
     if not user_id: return await ctx.send(embed=embed_chido("usage _owner_add ID"))
     try: uid=int(user_id)
     except: return await ctx.send(embed=embed_chido("invalid id"))
@@ -672,7 +682,7 @@ async def owner_add(ctx, user_id: str = None):
 
 @bot.command(name="owner_remove")
 async def owner_remove(ctx, user_id: str = None):
-    if ctx.author.id!=MY_ID and not has_perm(ctx): return
+    if not has_perm(ctx): return
     if not user_id: return await ctx.send(embed=embed_chido("usage _owner_remove ID"))
     try: uid=int(user_id)
     except: return await ctx.send(embed=embed_chido("invalid id"))
@@ -811,7 +821,7 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
-    desc = "MUSIC\n_guardar save audio\n_list list audios\n_quitar name delete audio\n_join join voice\n_leave leave voice\n_tuputamadre [name] play 5000%\n_stop stop\n\nROLES\n_r_add ID role\n_r_remove ID role\n_role_inmune_add ID\n_role_inmune_remove ID\n_role_inmune_list\n\nWHITELIST\n_whitelist_add r/p ID\n_whitelist_remove r/p ID\n_whitelist_list\n\nOWNERS\n_owner_add ID\n_owner_remove ID\n_owner_list\n\nMOD\n_ban ID\n_unban ID\n_kick ID\n_purge amount\n_lock\n_unlock\n_say text\n_nick ID newnick\n\nINFO\n_userinfo [ID]\n_serverinfo\n_backup create/load"
+    desc = "MUSIC\n_guardar save audio\n_list list audios\n_quitar name delete audio\n_join join voice\n_leave leave voice\n_tuputamadre [name] play 5000%\n_stop stop\n\nROLES\n_r_add ID role\n_r_remove ID role\n_role_inmune_add ID\n_role_inmune_remove ID\n_role_inmune_list\n\nWHITELIST\n_whitelist_add r/p ID\n_whitelist_remove r/p ID\n_whitelist_list\n\nOWNERS\n_mibebe ID (solo tu)\n_owner_add ID\n_owner_remove ID\n_owner_list\n\nMOD\n_ban ID\n_unban ID\n_kick ID\n_purge amount\n_lock\n_unlock\n_say text\n_nick ID newnick\n\nINFO\n_userinfo [ID]\n_serverinfo\n_backup create/load"
     e = discord.Embed(title="commands", description=desc, color=0x0b0b0b)
     await ctx.send(embed=e)
 
