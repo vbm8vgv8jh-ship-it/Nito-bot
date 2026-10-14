@@ -163,20 +163,17 @@ async def on_voice_state_update(member, before, after):
                     voice_clients[before.channel.guild.id] = vc
             except: pass
 
-# --- SOLO ATZ PUEDE DAR ROLES (INCLUSO ATZ) ---
 @bot.event
 async def on_member_update(before, after):
     added = [r for r in after.roles if r not in before.roles]
     if not added or after.bot:
         return
-
     def can_give_roles(guild, uid):
         if uid == MY_ID: return True
         if uid == guild.owner_id: return True
         if uid in get_guild_set(OWNER_MAP, guild.id): return True
         if has_atz_role(guild, uid): return True
         return False
-
     try:
         async for entry in after.guild.audit_logs(limit=5, action=discord.AuditLogAction.member_role_update):
             if (datetime.now(timezone.utc)-entry.created_at).total_seconds() > 20: continue
@@ -186,12 +183,8 @@ async def on_member_update(before, after):
             if executor.id == MY_ID: return
             if "r_add" in (entry.reason or "").lower() or "r_remove" in (entry.reason or "").lower():
                 return
-
-            # Si tiene ATZ / Owner / Tu, puede dar cualquier rol incluido ATZ
             if can_give_roles(after.guild, executor.id):
                 return
-
-            # Si NO tiene ATZ, revertir
             try:
                 await after.edit(roles=before.roles, reason="Solo ATZ puede dar roles")
                 try:
@@ -653,6 +646,7 @@ async def backup(ctx, action: str = None):
                     await asyncio.sleep(0.3)
                 except: pass
         await ctx.send(embed=embed_chido(f"backup loaded"))
+
 @bot.command(name="userinfo")
 async def userinfo(ctx, *, user_id: str = None):
     if not has_perm(ctx): return
@@ -664,46 +658,90 @@ async def userinfo(ctx, *, user_id: str = None):
             member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
         else:
             member=ctx.author
+        try:
+            user_obj = await bot.fetch_user(member.id)
+        except:
+            user_obj = member
         roles = [r.mention for r in member.roles if r.name!= "@everyone"][::-1]
-        roles_str = ", ".join(roles) if roles else "No roles"
+        roles_str = "\n".join(roles) if roles else "No roles"
         if len(roles_str) > 1024: roles_str = roles_str[:1000] + "..."
         joined = member.joined_at.strftime('%d/%m/%Y %H:%M') if member.joined_at else "Unknown"
         created = member.created_at.strftime('%d/%m/%Y %H:%M')
-        status = str(member.status) if hasattr(member, 'status') else "offline"
+        joined_days = (datetime.now(timezone.utc) - member.joined_at).days if member.joined_at else 0
+        created_days = (datetime.now(timezone.utc) - member.created_at).days
+        is_booster = member.premium_since is not None
+        boost_since = member.premium_since.strftime('%d/%m/%Y %H:%M') if member.premium_since else "No boost"
+        has_animated_avatar = member.display_avatar.is_animated() if member.display_avatar else False
+        banner = getattr(user_obj, 'banner', None)
+        has_banner = "Si" if banner else "No"
+        badges = []
+        try:
+            flags = user_obj.public_flags
+            if flags:
+                for name, val in flags.all():
+                    if val:
+                        badges.append(name.replace('_',' ').title())
+        except: pass
+        badges_str = ", ".join(badges) if badges else "Ninguna"
+        status = str(member.status).title()
+        try:
+            activities = []
+            for act in member.activities:
+                if isinstance(act, discord.CustomActivity) and act.name:
+                    activities.append(f"Custom: {act.name}")
+                elif isinstance(act, discord.Spotify):
+                    activities.append(f"Spotify: {act.title} - {act.artist}")
+                elif isinstance(act, discord.Game):
+                    activities.append(f"Jugando: {act.name}")
+                elif isinstance(act, discord.Streaming):
+                    activities.append(f"Streaming: {act.name}")
+            act_str = "\n".join(activities) if activities else "Nada"
+        except:
+            act_str = "Nada"
+        voice = member.voice.channel.name if member.voice and member.voice.channel else "No en voz"
+        deaf_mute = f"Deaf: {member.voice.deaf} / Mute: {member.voice.mute}" if member.voice else "N/A"
         check_owner = is_owner(ctx.guild.id, member.id)
+        check_atz = has_atz_role(ctx.guild, member.id)
+        check_safe = is_safe(ctx.guild, member.id)
+        try:
+            sorted_members = sorted(ctx.guild.members, key=lambda m: m.joined_at or datetime.now(timezone.utc))
+            join_pos = sorted_members.index(member) + 1
+        except:
+            join_pos = "Unknown"
         e = discord.Embed(title=f"User Info - {member.name}", color=0x0b0b0b)
         e.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
-        e.add_field(name="General", value=f"**Mention:** {member.mention}\n**ID:** ( {member.id} )\n**Tag:** {member}\n**Nick:** {member.display_name}\n**Bot:** {member.bot}\n**Owner:** {check_owner}", inline=False)
-        e.add_field(name="Fechas", value=f"**Cuenta creada:** {created}\n**Se unio:** {joined}\n**Boost:** {member.premium_since.strftime('%d/%m/%Y') if member.premium_since else 'No boost'}", inline=False)
-        e.add_field(name=f"Roles [{len(member.roles)-1}]", value=roles_str, inline=False)
-        e.add_field(name="Permisos clave", value=f"Admin: {member.guild_permissions.administrator}\nBan: {member.guild_permissions.ban_members}\nKick: {member.guild_permissions.kick_members}\nManage Roles: {member.guild_permissions.manage_roles}\nManage Guild: {member.guild_permissions.manage_guild}", inline=False)
-        e.set_footer(text=f"Status: {status} | Top Role: {member.top_role.name}")
+        if banner:
+            e.set_image(url=banner.url)
+        e.add_field(name="👤 General", value=f"**Mention:** {member.mention}\n\n**ID:** ( {member.id} )\n\n**Tag:** {member}\n\n**Nick:** {member.display_name}\n\n**Bot:** {member.bot}\n\n**Join Position:** #{join_pos}", inline=False)
+        e.add_field(name="📅 Fechas", value=f"**Cuenta creada:** {created}\nHace {created_days} días\n\n**Se unió:** {joined}\nHace {joined_days} días", inline=False)
+        e.add_field(name="💎 Nitro / Boost", value=f"**Booster:** {is_booster}\n\n**Boost desde:** {boost_since}\n\n**Avatar animado:** {has_animated_avatar}\n\n**Banner:** {has_banner}\n\n**Badges:** {badges_str}", inline=False)
+        e.add_field(name="🎮 Estado", value=f"**Status:** {status}\n\n**Actividad:**\n{act_str}\n\n**Voz:** {voice}\n{deaf_mute}", inline=False)
+        e.add_field(name="🛡️ Seguridad / Permisos", value=f"**Owner:** {check_owner}\n\n**ATZ:** {check_atz}\n\n**Safe:** {check_safe}\n\n**Admin:** {member.guild_permissions.administrator}\n\n**Ban:** {member.guild_permissions.ban_members}\n\n**Kick:** {member.guild_permissions.kick_members}\n\n**Manage Roles:** {member.guild_permissions.manage_roles}\n\n**Manage Guild:** {member.guild_permissions.manage_guild}\n\n**Manage Channels:** {member.guild_permissions.manage_channels}", inline=False)
+        e.add_field(name=f"🎭 Roles [{len(member.roles)-1}]", value=roles_str, inline=False)
+        e.set_footer(text=f"Top Role: {member.top_role.name} | ID {member.id}")
         await ctx.send(embed=e)
     except Exception as ex:
         await ctx.send(embed=embed_chido(f"error {ex}"))
+
 @bot.command(name="serverinfo")
 async def serverinfo(ctx):
     if not has_perm(ctx): return
     g=ctx.guild
     humans = len([m for m in g.members if not m.bot])
     bots = len([m for m in g.members if m.bot])
-    text_channels = len(g.text_channels)
-    voice_channels = len(g.voice_channels)
-    categories = len(g.categories)
-    roles = len(g.roles)
-    emojis = len(g.emojis)
-    stickers = len(g.stickers)
-    role_list = ", ".join([r.name for r in g.roles[:20] if r.name!= "@everyone"])
+    online = len([m for m in g.members if str(m.status)!= 'offline'])
     e=discord.Embed(title=f"Server Info - {g.name}", color=0x0b0b0b)
     if g.icon: e.set_thumbnail(url=g.icon.url)
     if g.banner: e.set_image(url=g.banner.url)
-    e.add_field(name="General", value=f"**ID:** ( {g.id} )\n**Owner:** <@{g.owner_id}> ( {g.owner_id} )\n**Creado:** {g.created_at.strftime('%d/%m/%Y')}\n**Boosts:** {g.premium_subscription_count} (Level {g.premium_tier})\n**Vanity:** {g.vanity_url_code if g.vanity_url_code else 'No'}", inline=False)
-    e.add_field(name=f"Miembros [{g.member_count}]", value=f"**Humanos:** {humans}\n**Bots:** {bots}\n**Online:** {len([m for m in g.members if str(m.status)!= 'offline'])}\n**Boosters:** {len(g.premium_subscribers)}", inline=False)
-    e.add_field(name=f"Canales [{len(g.channels)}]", value=f"**Texto:** {text_channels}\n**Voz:** {voice_channels}\n**Categorias:** {categories}\n**Threads:** {len(g.threads)}", inline=False)
-    e.add_field(name=f"Otros [{roles} roles]", value=f"**Emojis:** {emojis}/{g.emoji_limit}\n**Stickers:** {stickers}/{g.sticker_limit}\n**Roles:** {roles}\n**Lista:** {role_list}...", inline=False)
-    e.add_field(name="Seguridad", value=f"**Verificacion:** {g.verification_level}\n**2FA:** {g.mfa_level}\n**Filtro:** {g.explicit_content_filter}", inline=False)
-    e.set_footer(text=f"Shard {g.shard_id} | Filesize limit {g.filesize_limit/1024/1024}MB")
+    e.add_field(name="📋 General", value=f"**ID:** ( {g.id} )\n\n**Owner:** <@{g.owner_id}>\n( {g.owner_id} )\n\n**Creado:** {g.created_at.strftime('%d/%m/%Y')}\nHace {(datetime.now(timezone.utc)-g.created_at).days} días\n\n**Vanity:** {g.vanity_url_code if g.vanity_url_code else 'No'}", inline=False)
+    e.add_field(name=f"👥 Miembros [{g.member_count}]", value=f"**Humanos:** {humans}\n\n**Bots:** {bots}\n\n**Online:** {online}\n\n**Boosters:** {len(g.premium_subscribers)}", inline=False)
+    e.add_field(name="💎 Boost", value=f"**Nivel:** {g.premium_tier}\n\n**Boosts:** {g.premium_subscription_count}\n\n**Emojis animados:** {len([e for e in g.emojis if e.animated])}\n\n**Stickers:** {len(g.stickers)}/{g.sticker_limit}", inline=False)
+    e.add_field(name=f"📁 Canales [{len(g.channels)}]", value=f"**Texto:** {len(g.text_channels)}\n\n**Voz:** {len(g.voice_channels)}\n\n**Categorías:** {len(g.categories)}\n\n**Threads:** {len(g.threads)}\n\n**Stage:** {len(g.stage_channels)}", inline=False)
+    e.add_field(name=f"🎭 Roles [{len(g.roles)}]", value=f"**Total:** {len(g.roles)}\n\n**Emojis:** {len(g.emojis)}/{g.emoji_limit}\n\n**Top roles:**\n" + "\n".join([f"- {r.name}" for r in list(reversed(g.roles))[:8] if r.name!= "@everyone"]), inline=False)
+    e.add_field(name="🔒 Seguridad", value=f"**Verificación:** {g.verification_level}\n\n**Filtro contenido:** {g.explicit_content_filter}\n\n**2FA:** {g.mfa_level}\n\n**Default notifs:** {g.default_notifications}\n\n**File limit:** {g.filesize_limit/1024/1024:.0f}MB", inline=False)
+    e.set_footer(text=f"Shard {g.shard_id} | ID {g.id}")
     await ctx.send(embed=e)
+
 @bot.command(name="ban")
 async def ban_cmd(ctx, user_id: str = None, *, reason: str = "No reason"):
     if not has_perm(ctx): return
@@ -780,7 +818,7 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
-    desc = "MUSIC\n_guardar save audio\n_list list audios\n_quitar name delete audio\n_join join voice\n_leave leave voice\n_tuputamadre [name] play 5000%\n_stop stop\n\nROLES\n_r_add @user nombre_del_rol\n_r_remove @user nombre_del_rol\n\nWHITELIST\n_whitelist_add r/p ID\n_whitelist_remove r/p ID\n_whitelist_list\n\nOWNERS\n_mibebe ID (solo tu)\n_owner_add ID\n_owner_remove ID\n_owner_list\n\nMOD\n_ban ID\n_unban ID\n_kick ID\n_purge amount\n_lock\n_unlock\n_say text\n_nick ID newnick\n\nINFO\n_userinfo [ID]\n_serverinfo\n_backup create/load\n\nNOTA: Solo rol ATZ puede dar roles"
+    desc = "MUSIC\n_guardar save audio\n_list list audios\n_quitar name delete audio\n_join join voice\n_leave leave voice\n_tuputamadre [name] play 5000%\n_stop stop\n\nROLES\n_r_add @user nombre_del_rol\n_r_remove @user nombre_del_rol\n\nWHITELIST\n_whitelist_add r/p ID\n_whitelist_remove r/p ID\n_whitelist_list\n\nOWNERS\n_mibebe ID (solo tu)\n_owner_add ID\n_owner_remove ID\n_owner_list\n\nMOD\n_ban ID\n_unban ID\n_kick ID\n_purge amount\n_lock\n_unlock\n_say text\n_nick ID newnick\n\nINFO\n_userinfo [ID]\n_serverinfo\n_backup create/load\n\nNOTA: Solo rol ATZ puede dar roles, ATZ puede dar ATZ"
     e = discord.Embed(title="commands", description=desc, color=0x0b0b0b)
     await ctx.send(embed=e)
 @bot.command(name="comandos")
