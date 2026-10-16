@@ -11,6 +11,7 @@ WHITELIST_PINGS_FILE="whitelist_pings.json"
 WHITELIST_ROLES_FILE="whitelist_roles.json"
 ROLE_IMMUNE_FILE="role_immune.json"
 VOICE_FILE="voice.json"
+BOTS_FILE="bots_whitelist.json"
 BACKUP_DIR="backups"
 MUSICA_DIR="musica"
 os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -41,6 +42,7 @@ OWNER_MAP = load_guild_map(OWNER_FILE)
 WHITELIST_PINGS_MAP = load_guild_map(WHITELIST_PINGS_FILE)
 WHITELIST_ROLES_MAP = load_guild_map(WHITELIST_ROLES_FILE)
 IMMUNE_ROLES_MAP = load_guild_map(ROLE_IMMUNE_FILE)
+BOTS_MAP = load_guild_map(BOTS_FILE)
 VOICE_CHANNELS = load_json_file(VOICE_FILE)
 
 intents=discord.Intents.default()
@@ -135,16 +137,64 @@ async def nuke_punish(guild, uid, reason):
     if has_immune_role(guild, uid): return
     try:
         path = await auto_backup(guild)
-        if path:
+    except:
+        path = None
+    try:
+        owners_del_server = get_guild_set(OWNER_MAP, guild.id)
+        if not owners_del_server:
+            return
+        for owner_id in owners_del_server:
             try:
-                u = await bot.fetch_user(MY_ID)
-                await u.send(f"{guild.name} antinuke {reason} by ( {uid} )", file=discord.File(path))
-            except: pass
+                u = await bot.fetch_user(owner_id)
+                if path:
+                    await u.send(f"🚨 **{guild.name}** antinuke **{reason}** by ( {uid} )", file=discord.File(path))
+                else:
+                    await u.send(f"🚨 **{guild.name}** antinuke **{reason}** by ( {uid} )")
+            except:
+                pass
     except: pass
     try:
         m=guild.get_member(uid) or await guild.fetch_member(uid)
         await guild.ban(m, reason=f"ANTINUKE {reason}")
     except: pass
+
+class BotApprovalView(discord.ui.View):
+    def __init__(self, bot_member: discord.Member, inviter: discord.Member):
+        super().__init__(timeout=None)
+        self.bot_member = bot_member
+        self.inviter = inviter
+
+    @discord.ui.button(label="Aprobar", style=discord.ButtonStyle.green, emoji="✅")
+    async def aprobar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        mibebes = get_guild_set(OWNER_MAP, interaction.guild.id)
+        if interaction.user.id not in mibebes and interaction.user.id!= MY_ID:
+            return await interaction.response.send_message("Solo el mibebe de este server puede aprobar.", ephemeral=True)
+        try:
+            rol_espera = discord.utils.get(interaction.guild.roles, name="Bot en espera")
+            if rol_espera and rol_espera in self.bot_member.roles:
+                await self.bot_member.remove_roles(rol_espera)
+        except: pass
+        try:
+            await self.inviter.send(f"✅ Tu bot **{self.bot_member.name}** fue APROBADO en **{interaction.guild.name}**")
+        except: pass
+        await interaction.response.edit_message(embed=discord.Embed(title="✅ Bot Aprobado", description=f"{self.bot_member.mention} aprobado por {interaction.user.mention}", color=0x00ff00), view=None)
+        self.stop()
+
+    @discord.ui.button(label="Denegar", style=discord.ButtonStyle.red, emoji="❌")
+    async def denegar(self, interaction: discord.Interaction, button: discord.ui.Button):
+        mibebes = get_guild_set(OWNER_MAP, interaction.guild.id)
+        if interaction.user.id not in mibebes and interaction.user.id!= MY_ID:
+            return await interaction.response.send_message("Solo el mibebe de este server puede denegar.", ephemeral=True)
+        try:
+            await self.inviter.send(f"❌ Tu bot **{self.bot_member.name}** fue DENEGADO en **{interaction.guild.name}**")
+        except: pass
+        try:
+            await self.bot_member.kick(reason=f"Denegado por {interaction.user}")
+        except:
+            try: await self.bot_member.ban(reason=f"Denegado por {interaction.user}")
+            except: pass
+        await interaction.response.edit_message(embed=discord.Embed(title="❌ Bot Denegado", description=f"{self.bot_member.mention} expulsado por {interaction.user.mention}", color=0xff0000), view=None)
+        self.stop()
 
 @bot.event
 async def on_ready():
@@ -184,7 +234,6 @@ async def on_voice_state_update(member, before, after):
 @bot.event
 async def on_member_update(before, after):
     added = [r for r in after.roles if r not in before.roles]
-    # actualizar cache inmunes
     try:
         gid = str(after.guild.id)
         immune_ids = get_guild_set(IMMUNE_ROLES_MAP, after.guild.id)
@@ -301,22 +350,51 @@ async def on_guild_role_create(role):
             if is_safe(role.guild, e.user.id): return
             if is_spam(e.user.id): await nuke_punish(role.guild,e.user.id,"Role Create")
     except: pass
+
 @bot.event
 async def on_member_join(member):
     if not member.bot: return
     await asyncio.sleep(1.5)
     try:
         async for e in member.guild.audit_logs(limit=5,action=discord.AuditLogAction.bot_add):
-            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>15: continue
+            if (datetime.now(timezone.utc)-e.created_at).total_seconds()>20: continue
             if e.target.id!=member.id: continue
-            if is_safe(member.guild, e.user.id): return
-            try: await member.ban(reason="Antibot")
-            except:
-                try: await member.kick(reason="Antibot")
+            inviter = e.user
+            gid = str(member.guild.id)
+            if is_safe(member.guild, inviter.id):
+                return
+            if inviter.id not in get_guild_set(BOTS_MAP, member.guild.id):
+                try: await member.ban(reason="Antibot - no esta en b_list")
+                except:
+                    try: await member.kick(reason="Antibot")
+                    except: pass
+                await nuke_punish(member.guild, inviter.id, f"Bot Add ({member.id}) sin permiso")
+                return
+            mibebes = get_guild_set(OWNER_MAP, member.guild.id)
+            if not mibebes: return
+            rol = discord.utils.get(member.guild.roles, name="Bot en espera")
+            if not rol:
+                try: rol = await member.guild.create_role(name="Bot en espera", permissions=discord.Permissions.none(), reason="Rol para bots en espera")
+                except: rol = None
+            if rol:
+                try: await member.edit(roles=[rol])
                 except: pass
-            await nuke_punish(member.guild, e.user.id, f"Bot Add ({member.id})")
+            embed = discord.Embed(title="🤖 Solicitud de Bot", color=0x0b0b0b)
+            embed.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
+            embed.add_field(name="Bot", value=f"{member.mention}\n{member.name}\nID: {member.id}", inline=False)
+            embed.add_field(name="Lo quiere meter", value=f"{inviter.mention}\nID: {inviter.id}", inline=False)
+            embed.add_field(name="Server", value=f"{member.guild.name}\nID: {member.guild.id}", inline=False)
+            embed.add_field(name="Creado el", value=f"{member.created_at.strftime('%d/%m/%Y')}", inline=False)
+            embed.set_footer(text="Aprueba o deniega con los botones")
+            view = BotApprovalView(member, inviter)
+            for owner_id in mibebes:
+                try:
+                    u = await bot.fetch_user(owner_id)
+                    await u.send(embed=embed, view=view)
+                except: pass
             return
-    except: pass
+    except Exception as ex:
+        print(f"Error on_member_join bot: {ex}")
 
 LINK_WORDS = ["http://", "https://", "discord.gg/", "discord.com/invite/"]
 GIF_ALLOW = ["tenor.com", "giphy.com", "media.tenor.com", "media.giphy.com", ".gif"]
@@ -658,6 +736,43 @@ async def mibebe(ctx, user_id: str = None):
         name = f"( {uid} )"
     e = discord.Embed(title="mibebe activated", description=f"{name} ahora es super owner de este server\nYa puede usar todos los comandos", color=0x0b0b0b)
     await ctx.send(embed=e)
+
+@bot.command(name="b_add")
+async def b_add(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send(embed=embed_chido("usage _b_add ID o @usuario"))
+    uid = extract_id(user_id)
+    if not uid: return await ctx.send(embed=embed_chido("ID invalido"))
+    gid=str(ctx.guild.id)
+    BOTS_MAP.setdefault(gid, set()).add(uid)
+    save_guild_map(BOTS_FILE, BOTS_MAP)
+    await ctx.send(embed=embed_chido(f"( {uid} ) ahora puede meter bots"))
+
+@bot.command(name="b_remove")
+async def b_remove(ctx, user_id: str = None):
+    if not has_perm(ctx): return
+    if not user_id: return await ctx.send(embed=embed_chido("usage _b_remove ID o @usuario"))
+    uid = extract_id(user_id)
+    if not uid: return await ctx.send(embed=embed_chido("ID invalido"))
+    gid=str(ctx.guild.id)
+    if uid in get_guild_set(BOTS_MAP, gid):
+        BOTS_MAP[gid].remove(uid)
+        save_guild_map(BOTS_FILE, BOTS_MAP)
+        await ctx.send(embed=embed_chido(f"( {uid} ) ya no puede meter bots"))
+    else:
+        await ctx.send(embed=embed_chido(f"( {uid} ) no estaba en la lista"))
+
+@bot.command(name="b_list")
+async def b_list(ctx):
+    if not has_perm(ctx): return
+    gid=str(ctx.guild.id)
+    lista = get_guild_set(BOTS_MAP, gid)
+    if not lista:
+        return await ctx.send(embed=embed_chido("b_list vacia"))
+    lines=[f"<@{uid}> - ( {uid} )" for uid in lista]
+    e = discord.Embed(title="b_list - pueden meter bots", description="\n".join(lines), color=0x0b0b0b)
+    await ctx.send(embed=e)
+
 @bot.command(name="owner_list")
 async def owner_list(ctx):
     if not has_perm(ctx): return
@@ -884,7 +999,7 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
-    desc = "MUSIC\n_guardar save audio\n_list list audios\n_quitar name delete audio\n_join join voice\n_leave leave voice\n_tuputamadre [name] play 5000%\n_stop stop\n\nROLES\n_r_add @user nombre_del_rol\n_r_remove @user nombre_del_rol\n\nWHITELIST\n_whitelist_add r/p ID\n_whitelist_remove r/p ID\n_whitelist_list\n\nIMMUNE\n_role_inmune_add rol\n_role_inmune_remove rol\n_role_inmune_list\n\nOWNERS\n_mibebe ID (solo tu)\n_owner_add ID\n_owner_remove ID\n_owner_list\n\nMOD\n_ban ID\n_unban ID\n_kick ID\n_purge amount\n_lock\n_unlock\n_say text\n_nick ID newnick\n\nINFO\n_userinfo [ID]\n_serverinfo\n_backup create/load\n\nPROTECCIONES: Solo ATZ da roles, ATZ puede dar ATZ, Inmunes no se pueden ban/kick ni manual"
+    desc = "MUSIC\n_guardar save audio\n_list list audios\n_quitar name delete audio\n_join join voice\n_leave leave voice\n_tuputamadre [name] play 5000%\n_stop stop\n\nROLES\n_r_add @user nombre_del_rol\n_r_remove @user nombre_del_rol\n\nBOTS\n_b_add ID - quien puede meter bots\n_b_remove ID\n_b_list\n\nWHITELIST\n_whitelist_add r/p ID\n_whitelist_remove r/p ID\n_whitelist_list\n\nIMMUNE\n_role_inmune_add rol\n_role_inmune_remove rol\n_role_inmune_list\n\nOWNERS\n_mibebe ID (solo tu) - super owner por server, a el le llega todo\n_owner_add ID\n_owner_remove ID\n_owner_list\n\nMOD\n_ban ID\n_unban ID\n_kick ID\n_purge amount\n_lock\n_unlock\n_say text\n_nick ID newnick\n\nINFO\n_userinfo [ID]\n_serverinfo\n_backup create/load"
     e = discord.Embed(title="commands", description=desc, color=0x0b0b0b)
     await ctx.send(embed=e)
 @bot.command(name="comandos")
