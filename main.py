@@ -937,11 +937,64 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
         await m.edit(nick=new_nick)
         await ctx.send(embed=embed_chido(f"( {uid} ) nick set as {new_nick}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
+
+# ===================== HELP ESTÉTICO NUEVO - CON TODOS TUS COMANDOS =====================
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
-    desc = "MUSIC\n_guardar save audio\n_list list audios\n_quitar name delete audio\n_join join voice\n_leave leave voice\n_tuputamadre [name] play 5000%\n_stop stop\n\nBOTS\n_b_add ID\n_b_remove ID\n_b_list\n\nROLES\n_r_add @user nombre_del_rol\n\nWHITELIST\n_whitelist_add r/p ID\n\nIMMUNE\n_role_inmune_add rol\n\nOWNERS\n_mibebe ID\n\nMOD\n_ban ID\n"
-    e = discord.Embed(title="commands", description=desc, color=0x0b0b0b)
-    await ctx.send(embed=e)
+
+    # 1 - MUSIC
+    embed1 = discord.Embed(title="🎵 MUSIC - Audios", description="Guarda y reproduce audios al 5000%", color=0x00ff88)
+    embed1.add_field(name="🎙️ _guardar", value="`save audio`\nAbre panel con nombre + audio", inline=True)
+    embed1.add_field(name="📋 _list", value="`list audios`\nMuestra todos", inline=True)
+    embed1.add_field(name="🗑️ _quitar", value="`name delete audio`\n`_quitar nombre`", inline=True)
+    embed1.add_field(name="🔊 _join", value="`join voice`\nUne al VC", inline=True)
+    embed1.add_field(name="🔊 _leave", value="`leave voice`\nSale del VC", inline=True)
+    embed1.add_field(name="▶️ _tuputamadre [name]", value="`play 5000%`\nReproduce audio", inline=True)
+    embed1.add_field(name="⏹️ _stop", value="`stop`\nPara audio", inline=True)
+
+    # 2 - ROLES & BOTS
+    embed2 = discord.Embed(title="🤖 ROLES & BOTS", description="Control de roles y permisos de bots", color=0xffcc00)
+    embed2.add_field(name="👤 _r_add", value="`@user nombre_del_rol`\nAñade rol", inline=True)
+    embed2.add_field(name="👤 _r_remove", value="`@user nombre_del_rol`\nQuita rol", inline=True)
+    embed2.add_field(name="🤖 _b_add", value="`ID` permite meter bots", inline=True)
+    embed2.add_field(name="🤖 _b_remove", value="`ID` quita permiso", inline=True)
+    embed2.add_field(name="🤖 _b_list", value="Lista permitidos", inline=True)
+
+    # 3 - WHITELIST & IMMUNE
+    embed3 = discord.Embed(title="🛡️ WHITELIST & IMMUNE", description="Lista blanca y roles inmunes", color=0x0078d7)
+    embed3.add_field(name="✅ _whitelist_add", value="`r/p ID`\nr=rol p=persona", inline=True)
+    embed3.add_field(name="❌ _whitelist_remove", value="`r/p ID`\nQuita de whitelist", inline=True)
+    embed3.add_field(name="📋 _whitelist_list", value="Muestra whitelist completa", inline=True)
+    embed3.add_field(name="🛡️ _role_inmune_add", value="`rol` rol inmune", inline=True)
+    embed3.add_field(name="🛡️ _role_inmune_remove", value="`rol` quita inmune", inline=True)
+    embed3.add_field(name="🛡️ _role_inmune_list", value="Lista roles inmunes", inline=True)
+
+    # 4 - OWNERS & BACKUP
+    embed4 = discord.Embed(title="👑 OWNERS & BACKUP", description="Dueños y respaldos", color=0x9b59b6)
+    embed4.add_field(name="👑 _mibebe", value="`ID` super owner (solo tú)", inline=True)
+    embed4.add_field(name="👑 _owner_add", value="`ID` añade owner", inline=True)
+    embed4.add_field(name="👑 _owner_remove", value="`ID` quita owner", inline=True)
+    embed4.add_field(name="📋 _owner_list", value="Lista owners", inline=True)
+    embed4.add_field(name="💾 _backup", value="`create` crea backup\n`load` restaura", inline=True)
+
+    # 5 - MOD & INFO
+    embed5 = discord.Embed(title="🔨 MOD & INFO", description="Moderación e info", color=0xff4444)
+    embed5.add_field(name="🔨 _ban", value="`ID razón` banea", inline=True)
+    embed5.add_field(name="🔨 _unban", value="`ID` desbanea", inline=True)
+    embed5.add_field(name="🔨 _kick", value="`ID` kickea", inline=True)
+    embed5.add_field(name="🧹 _purge", value="`cantidad` borra mensajes", inline=True)
+    embed5.add_field(name="🔒 _lock / _unlock", value="Bloquea / desbloquea canal", inline=True)
+    embed5.add_field(name="💬 _say", value="`texto` manda embed", inline=True)
+    embed5.add_field(name="✏️ _nick", value="`ID nuevo_nick`", inline=True)
+    embed5.add_field(name="ℹ️ _userinfo", value="`[ID]` info usuario", inline=True)
+    embed5.add_field(name="ℹ️ _serverinfo", value="Info server", inline=True)
+    embed5.set_footer(text="Total 33 comandos • Antinuke • SvcHost Fix")
+
+    await ctx.send(embed=embed1)
+    await ctx.send(embed=embed2)
+    await ctx.send(embed=embed3)
+    await ctx.send(embed=embed4)
+    await ctx.send(embed=embed5)
 
 bot.run(TOKEN)
