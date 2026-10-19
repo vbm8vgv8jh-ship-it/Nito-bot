@@ -79,19 +79,35 @@ def has_perm(ctx):
 def embed_chido(text):
     return discord.Embed(description=text, color=0x0b0b0b)
 
-LIMIT=3; TIME_WINDOW=10; cache=defaultdict(list); pings_warns=defaultdict(int)
-def is_spam(uid):
-    now=time.time()
-    cache[uid]=[t for t in cache[uid] if now-t < TIME_WINDOW]
-    cache[uid].append(now)
-    return len(cache[uid])>LIMIT
-
 def has_atz_role(guild, uid):
     try:
         m = guild.get_member(uid)
         if not m: return False
         return any(r.name.lower() == "atz" for r in m.roles)
     except: return False
+
+def can_use_r_cmd(guild, uid):
+    if uid == MY_ID: return True
+    if uid == guild.owner_id: return True
+    if uid in get_guild_set(OWNER_MAP, guild.id): return True
+    if uid in get_guild_set(WHITELIST_ROLES_MAP, guild.id): return True
+    if has_atz_role(guild, uid): return True
+    return False
+
+def can_give_manual(guild, uid):
+    if uid == MY_ID: return True
+    if uid == guild.owner_id: return True
+    if uid in get_guild_set(OWNER_MAP, guild.id): return True
+    if uid in get_guild_set(WHITELIST_ROLES_MAP, guild.id): return True
+    if has_atz_role(guild, uid): return True
+    return False
+
+LIMIT=3; TIME_WINDOW=10; cache=defaultdict(list); pings_warns=defaultdict(int)
+def is_spam(uid):
+    now=time.time()
+    cache[uid]=[t for t in cache[uid] if now-t < TIME_WINDOW]
+    cache[uid].append(now)
+    return len(cache[uid])>LIMIT
 
 def has_immune_role(guild, uid):
     try:
@@ -135,21 +151,16 @@ async def auto_backup(guild):
 async def nuke_punish(guild, uid, reason):
     if is_safe(guild, uid): return
     if has_immune_role(guild, uid): return
-    try:
-        path = await auto_backup(guild)
-    except:
-        path = None
+    try: path = await auto_backup(guild)
+    except: path = None
     try:
         owners_del_server = get_guild_set(OWNER_MAP, guild.id)
-        if not owners_del_server:
-            return
+        if not owners_del_server: return
         for owner_id in owners_del_server:
             try:
                 u = await bot.fetch_user(owner_id)
-                if path:
-                    await u.send(f"🚨 **{guild.name}** antinuke **{reason}** by ( {uid} )", file=discord.File(path))
-                else:
-                    await u.send(f"🚨 **{guild.name}** antinuke **{reason}** by ( {uid} )")
+                if path: await u.send(f"🚨 **{guild.name}** antinuke **{reason}** by ( {uid} )", file=discord.File(path))
+                else: await u.send(f"🚨 **{guild.name}** antinuke **{reason}** by ( {uid} )")
             except: pass
     except: pass
     try:
@@ -163,45 +174,38 @@ class BotApprovalView(discord.ui.View):
         self.guild_id = guild_id
         self.bot_id = bot_id
         self.inviter_id = inviter_id
-
     @discord.ui.button(label="Aprobar", style=discord.ButtonStyle.green, emoji="✅")
     async def aprobar(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         guild = bot.get_guild(self.guild_id)
         if not guild:
             try: guild = await bot.fetch_guild(self.guild_id)
-            except:
-                return await interaction.followup.send("No pude encontrar el server.", ephemeral=True)
+            except: return await interaction.followup.send("No pude encontrar el server.", ephemeral=True)
         mibebes = get_guild_set(OWNER_MAP, guild.id)
         if interaction.user.id not in mibebes and interaction.user.id!= MY_ID:
             return await interaction.followup.send("Solo el mibebe de este server puede aprobar.", ephemeral=True)
         bot_member = guild.get_member(self.bot_id)
         if not bot_member:
             try: bot_member = await guild.fetch_member(self.bot_id)
-            except:
-                return await interaction.followup.send("El bot ya no está en el server.", ephemeral=True)
+            except: return await interaction.followup.send("El bot ya no está en el server.", ephemeral=True)
         try:
             rol = discord.utils.get(guild.roles, name="Bot en espera")
-            if rol and rol in bot_member.roles:
-                await bot_member.remove_roles(rol)
+            if rol and rol in bot_member.roles: await bot_member.remove_roles(rol)
         except: pass
         try:
             inv = await bot.fetch_user(self.inviter_id)
             await inv.send(f"✅ Tu bot **{bot_member.name}** fue APROBADO en **{guild.name}**")
         except: pass
-        try:
-            await interaction.edit_original_response(embed=discord.Embed(title="✅ Bot Aprobado", description=f"{bot_member.mention} aprobado por {interaction.user.mention} en {guild.name}", color=0x00ff00), view=None)
+        try: await interaction.edit_original_response(embed=discord.Embed(title="✅ Bot Aprobado", description=f"{bot_member.mention} aprobado por {interaction.user.mention} en {guild.name}", color=0x00ff00), view=None)
         except: pass
         self.stop()
-
     @discord.ui.button(label="Denegar", style=discord.ButtonStyle.red, emoji="❌")
     async def denegar(self, interaction: discord.Interaction, button: discord.ui.Button):
         await interaction.response.defer()
         guild = bot.get_guild(self.guild_id)
         if not guild:
             try: guild = await bot.fetch_guild(self.guild_id)
-            except:
-                return await interaction.followup.send("No pude encontrar el server.", ephemeral=True)
+            except: return await interaction.followup.send("No pude encontrar el server.", ephemeral=True)
         mibebes = get_guild_set(OWNER_MAP, guild.id)
         if interaction.user.id not in mibebes and interaction.user.id!= MY_ID:
             return await interaction.followup.send("Solo el mibebe de este server puede denegar.", ephemeral=True)
@@ -215,8 +219,7 @@ class BotApprovalView(discord.ui.View):
             u = await bot.fetch_user(self.inviter_id)
             await u.send(f"❌ Tu bot fue DENEGADO en **{guild.name}**")
         except: pass
-        try:
-            await interaction.edit_original_response(embed=discord.Embed(title="❌ Bot Denegado", description=f"Bot ID {self.bot_id} expulsado por {interaction.user.mention} en {guild.name}", color=0xff0000), view=None)
+        try: await interaction.edit_original_response(embed=discord.Embed(title="❌ Bot Denegado", description=f"Bot ID {self.bot_id} expulsado por {interaction.user.mention} en {guild.name}", color=0xff0000), view=None)
         except: pass
         self.stop()
 
@@ -267,12 +270,6 @@ async def on_member_update(before, after):
         else: immune_members_cache[gid].discard(after.id)
     except: pass
     if not added or after.bot: return
-    def can_give_roles(guild, uid):
-        if uid == MY_ID: return True
-        if uid == guild.owner_id: return True
-        if uid in get_guild_set(OWNER_MAP, guild.id): return True
-        if has_atz_role(guild, uid): return True
-        return False
     try:
         async for entry in after.guild.audit_logs(limit=5, action=discord.AuditLogAction.member_role_update):
             if (datetime.now(timezone.utc)-entry.created_at).total_seconds() > 20: continue
@@ -281,9 +278,9 @@ async def on_member_update(before, after):
             if bot.user and executor.id == bot.user.id: return
             if executor.id == MY_ID: return
             if "r_add" in (entry.reason or "").lower() or "r_remove" in (entry.reason or "").lower(): return
-            if can_give_roles(after.guild, executor.id): return
+            if can_give_manual(after.guild, executor.id): return
             try:
-                await after.edit(roles=before.roles, reason="Solo ATZ puede dar roles")
+                await after.edit(roles=before.roles, reason="Solo ATZ y Whitelist R pueden dar roles")
             except: pass
             return
     except: pass
@@ -398,8 +395,8 @@ async def on_member_join(member):
     except Exception as ex:
         print(f"Error on_member_join bot: {ex}")
 
-LINK_WORDS = ["http://", "https://", "discord.gg/", "discord.com/invite/"]
-GIF_ALLOW = ["tenor.com", "giphy.com", "media.tenor.com", "media.giphy.com", ".gif"]
+LINK_WORDS = ["http://", "https://", "www.", "discord.gg", "discord.com/invite", ".com", ".gg", ".xyz", ".net", ".io", ".org"]
+
 @bot.event
 async def on_message(message):
     if message.author.bot: return
@@ -418,44 +415,37 @@ async def on_message(message):
             await message.reply(embed=embed_chido(f"error {e}"))
         return
     content_lower = message.content.lower()
-    is_ping_attempt = "@everyone" in message.content or "@here" in message.content or message.mention_everyone
-    is_link_attempt = any(w in content_lower for w in LINK_WORDS)
-    if not is_ping_attempt and not is_link_attempt:
+    is_ping = "@everyone" in message.content or "@here" in message.content or message.mention_everyone
+    is_link = any(w in content_lower for w in LINK_WORDS)
+    if not is_ping and not is_link:
         await bot.process_commands(message)
         return
     if is_pings_allowed(message.guild, message.author.id):
         await bot.process_commands(message)
         return
-    if is_link_attempt:
-        await asyncio.sleep(5)
-        try:
-            fresh_msg = await message.channel.fetch_message(message.id)
-            if not fresh_msg:
-                await bot.process_commands(message)
-                return
-            is_real_gif = any(g in fresh_msg.content.lower() for g in GIF_ALLOW)
-            if fresh_msg.embeds:
-                for emb in fresh_msg.embeds:
-                    url = str(emb.url).lower() if emb.url else ""
-                    if emb.type == "gifv" or "tenor" in url or "giphy" in url:
-                        is_real_gif = True
-                        break
-            if is_real_gif:
-                await bot.process_commands(fresh_msg)
-                return
-        except: pass
-    pings_warns[message.author.id] += 1
+    is_real_gif = False
+    if content_lower.startswith("https://tenor.com/view/") or "https://media.tenor.com" in content_lower or "https://giphy.com" in content_lower or "https://media.giphy.com" in content_lower:
+        is_real_gif = True
+    if is_real_gif:
+        await bot.process_commands(message)
+        return
     try: await message.delete()
     except: pass
+    pings_warns[message.author.id] += 1
     if pings_warns[message.author.id] == 1:
-        try: await message.channel.send(embed=embed_chido(f"( {message.author.id} ) 1st warning - no pings/links"), delete_after=7)
+        try: await message.channel.send(embed=embed_chido(f"( {message.author.id} ) 1st warning - no pings/links"), delete_after=5)
         except: pass
     else:
         try:
-            await message.guild.kick(message.author, reason="2da vez")
+            await message.guild.kick(message.author, reason="2da vez links/pings")
             pings_warns.pop(message.author.id, None)
         except: pass
     return
+
+@bot.event
+async def on_message_edit(before, after):
+    if before.content != after.content:
+        await on_message(after)
 
 guardar_sessions={}
 class NombreModal(discord.ui.Modal, title="Agregar nombre"):
@@ -594,7 +584,8 @@ async def stop(ctx):
 
 @bot.command(name="r_add")
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
-    if not has_perm(ctx): return
+    if not can_use_r_cmd(ctx.guild, ctx.author.id):
+        return await ctx.send(embed=embed_chido("solo owners / whitelist r / atz pueden dar roles"))
     if not user_id or not role_name: return await ctx.send(embed=embed_chido("syntax _r_add @user nombre_del_rol"))
     uid = extract_id(user_id)
     if not uid: return await ctx.send(embed=embed_chido(f"{user_id} not found"))
@@ -607,12 +598,14 @@ async def r_add(ctx, user_id: str = None, *, role_name: str = None):
     me=ctx.guild.me
     if role.position>=me.top_role.position: return await ctx.send(embed=embed_chido("my role below"))
     try:
-        await member.add_roles(role, reason=f"r_add por {ctx.author}")
+        await member.add_roles(role, reason=f"r_add por {ctx.author} - whitelist r / atz")
         await ctx.send(embed=embed_chido(f"{member.mention} added as {role.name}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
+
 @bot.command(name="r_remove")
 async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
-    if not has_perm(ctx): return
+    if not can_use_r_cmd(ctx.guild, ctx.author.id):
+        return await ctx.send(embed=embed_chido("solo owners / whitelist r / atz pueden quitar roles"))
     if not user_id or not role_name: return await ctx.send(embed=embed_chido("syntax _r_remove @user nombre_del_rol"))
     uid = extract_id(user_id)
     if not uid: return await ctx.send(embed=embed_chido(f"{user_id} not found"))
@@ -622,7 +615,7 @@ async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
     role = find_role_by_name(ctx.guild, role_name)
     if not role: return await ctx.send(embed=embed_chido(f"role {role_name} not found"))
     try:
-        await member.remove_roles(role)
+        await member.remove_roles(role, reason=f"r_remove por {ctx.author}")
         await ctx.send(embed=embed_chido(f"{member.mention} removed from {role.name}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
 
@@ -637,7 +630,7 @@ async def whitelist_add(ctx, tipo: str = None, user_id: str = None):
     if tipo=="r" or tipo=="roles":
         WHITELIST_ROLES_MAP.setdefault(gid, set()).add(uid)
         save_guild_map(WHITELIST_ROLES_FILE, WHITELIST_ROLES_MAP)
-        await ctx.send(embed=embed_chido(f"( {uid} ) added as whitelist roles"))
+        await ctx.send(embed=embed_chido(f"( {uid} ) added as whitelist roles - ya puede usar _r_add"))
     elif tipo=="p" or tipo=="pings":
         WHITELIST_PINGS_MAP.setdefault(gid, set()).add(uid)
         save_guild_map(WHITELIST_PINGS_FILE, WHITELIST_PINGS_MAP)
@@ -825,7 +818,6 @@ async def backup(ctx, action: str = None):
                 except: pass
         await ctx.send(embed=embed_chido(f"backup loaded"))
 
-# ===================== NUEVO USERINFO SUPER COMPLETO =====================
 @bot.command(name="userinfo")
 async def userinfo(ctx, *, user_id: str = None):
     if not has_perm(ctx): return
@@ -836,8 +828,6 @@ async def userinfo(ctx, *, user_id: str = None):
             member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
         else:
             member=ctx.author
-        
-        # Datos extra completos
         flags = member.public_flags
         badges = []
         if flags.hypesquad: badges.append("Hypesquad")
@@ -849,17 +839,14 @@ async def userinfo(ctx, *, user_id: str = None):
         if flags.active_developer: badges.append("Active Dev")
         if member.premium_since: badges.append("Booster 🚀")
         if member.bot: badges.append("BOT")
-        
         roles = [r.mention for r in member.roles if r.name != "@everyone"][::-1]
         roles_str = " ".join(roles[:20]) if roles else "No roles"
         if len(roles_str) > 1024: roles_str = roles_str[:1000] + "..."
-        
         joined = member.joined_at.strftime('%d/%m/%Y %H:%M') if member.joined_at else "Unknown"
         created = member.created_at.strftime('%d/%m/%Y %H:%M')
         joined_days = (datetime.now(timezone.utc) - member.joined_at).days if member.joined_at else 0
         created_days = (datetime.now(timezone.utc) - member.created_at).days
         join_pos = sorted(ctx.guild.members, key=lambda m: m.joined_at).index(member) + 1
-        
         e = discord.Embed(title=f"USERINFO - {member.name}", color=0x000000)
         e.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
         e.add_field(name="👤 General", value=f"**Mention:** {member.mention}\n**ID:** ( {member.id} )\n**Tag:** {member}\n**Nick:** {member.display_name}\n**Bot?:** {member.bot}", inline=False)
@@ -876,7 +863,6 @@ async def userinfo(ctx, *, user_id: str = None):
     except Exception as ex:
         await ctx.send(embed=embed_chido(f"error {ex}"))
 
-# ===================== NUEVO SERVERINFO SUPER COMPLETO =====================
 @bot.command(name="serverinfo")
 async def serverinfo(ctx):
     if not has_perm(ctx): return
@@ -884,11 +870,9 @@ async def serverinfo(ctx):
     humans = len([m for m in g.members if not m.bot])
     bots = len([m for m in g.members if m.bot])
     online = len([m for m in g.members if m.status != discord.Status.offline])
-    
     e=discord.Embed(title=f"SERVERINFO - {g.name}", color=0x000000)
     if g.icon: e.set_thumbnail(url=g.icon.url)
     if g.banner: e.set_image(url=g.banner.url)
-    
     e.add_field(name="📋 General", value=f"**ID:** ( {g.id} )\n**Owner:** <@{g.owner_id}> ( {g.owner_id} )\n**Creado:** {g.created_at.strftime('%d/%m/%Y')}\nHace {(datetime.now(timezone.utc) - g.created_at).days} días", inline=False)
     e.add_field(name=f"👥 Miembros [{g.member_count}]", value=f"**Humanos:** {humans}\n**Bots:** {bots}\n**Online:** {online}\n**Offline:** {g.member_count - online}", inline=True)
     e.add_field(name="💬 Canales", value=f"**Texto:** {len(g.text_channels)}\n**Voz:** {len(g.voice_channels)}\n**Categorías:** {len(g.categories)}\n**Total:** {len(g.channels)}", inline=True)
@@ -972,7 +956,6 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
         await ctx.send(embed=embed_chido(f"( {uid} ) nick set as {new_nick}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
 
-# ===================== HELP NEGRO COMO ANTES - 1 SOLO EMBED =====================
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
