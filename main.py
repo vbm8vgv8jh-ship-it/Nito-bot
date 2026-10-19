@@ -591,6 +591,7 @@ async def stop(ctx):
     if vc and vc.is_playing():
         vc.stop()
         await ctx.send(embed=embed_chido("stopped"))
+
 @bot.command(name="r_add")
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
     if not has_perm(ctx): return
@@ -624,6 +625,7 @@ async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
         await member.remove_roles(role)
         await ctx.send(embed=embed_chido(f"{member.mention} removed from {role.name}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
+
 @bot.command(name="whitelist_add")
 async def whitelist_add(ctx, tipo: str = None, user_id: str = None):
     if not has_perm(ctx): return
@@ -823,6 +825,7 @@ async def backup(ctx, action: str = None):
                 except: pass
         await ctx.send(embed=embed_chido(f"backup loaded"))
 
+# ===================== NUEVO USERINFO SUPER COMPLETO =====================
 @bot.command(name="userinfo")
 async def userinfo(ctx, *, user_id: str = None):
     if not has_perm(ctx): return
@@ -833,35 +836,66 @@ async def userinfo(ctx, *, user_id: str = None):
             member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
         else:
             member=ctx.author
-        user_obj = await bot.fetch_user(member.id)
-        roles = [r.mention for r in member.roles if r.name!= "@everyone"][::-1]
-        roles_str = "\n".join(roles) if roles else "No roles"
+        
+        # Datos extra completos
+        flags = member.public_flags
+        badges = []
+        if flags.hypesquad: badges.append("Hypesquad")
+        if flags.hypesquad_bravery: badges.append("Bravery")
+        if flags.hypesquad_brilliance: badges.append("Brilliance")
+        if flags.hypesquad_balance: badges.append("Balance")
+        if flags.early_supporter: badges.append("Early Supporter")
+        if flags.verified_bot_developer: badges.append("Verified Dev")
+        if flags.active_developer: badges.append("Active Dev")
+        if member.premium_since: badges.append("Booster 🚀")
+        if member.bot: badges.append("BOT")
+        
+        roles = [r.mention for r in member.roles if r.name != "@everyone"][::-1]
+        roles_str = " ".join(roles[:20]) if roles else "No roles"
         if len(roles_str) > 1024: roles_str = roles_str[:1000] + "..."
+        
         joined = member.joined_at.strftime('%d/%m/%Y %H:%M') if member.joined_at else "Unknown"
         created = member.created_at.strftime('%d/%m/%Y %H:%M')
         joined_days = (datetime.now(timezone.utc) - member.joined_at).days if member.joined_at else 0
         created_days = (datetime.now(timezone.utc) - member.created_at).days
-        is_booster = member.premium_since is not None
-        boost_since = member.premium_since.strftime('%d/%m/%Y %H:%M') if member.premium_since else "No boost"
-        e = discord.Embed(title=f"User Info - {member.name}", color=0x0b0b0b)
+        join_pos = sorted(ctx.guild.members, key=lambda m: m.joined_at).index(member) + 1
+        
+        e = discord.Embed(title=f"USERINFO - {member.name}", color=0x000000)
         e.set_thumbnail(url=member.display_avatar.url if member.display_avatar else None)
-        e.add_field(name="👤 General", value=f"**Mention:** {member.mention}\n**ID:** ( {member.id} )\n**Tag:** {member}\n**Nick:** {member.display_name}", inline=False)
-        e.add_field(name="📅 Fechas", value=f"**Cuenta creada:** {created}\nHace {created_days} días\n**Se unió:** {joined}\nHace {joined_days} días", inline=False)
-        e.add_field(name="💎 Boost", value=f"**Booster:** {is_booster}\n**Boost desde:** {boost_since}", inline=False)
+        e.add_field(name="👤 General", value=f"**Mention:** {member.mention}\n**ID:** ( {member.id} )\n**Tag:** {member}\n**Nick:** {member.display_name}\n**Bot?:** {member.bot}", inline=False)
+        e.add_field(name="📅 Fechas", value=f"**Creada:** {created}\nHace {created_days} días\n**Se unió:** {joined}\nHace {joined_days} días\n**Posición:** #{join_pos}", inline=False)
+        e.add_field(name="💎 Boost", value=f"**Booster:** {bool(member.premium_since)}\n**Desde:** {member.premium_since.strftime('%d/%m/%Y') if member.premium_since else 'No boost'}", inline=True)
+        e.add_field(name="🎖️ Badges", value=", ".join(badges) if badges else "Ninguna", inline=True)
+        e.add_field(name="🔝 Rol más alto", value=member.top_role.mention, inline=False)
         e.add_field(name=f"🎭 Roles [{len(member.roles)-1}]", value=roles_str, inline=False)
+        e.add_field(name="🔑 Permisos", value=f"Admin: {member.guild_permissions.administrator} | Ban: {member.guild_permissions.ban_members} | Kick: {member.guild_permissions.kick_members} | Manage: {member.guild_permissions.manage_roles}", inline=False)
+        e.add_field(name="📱 Estado", value=f"{str(member.status).title()} - {member.activity.name if member.activity else 'Sin actividad'}", inline=False)
+        e.add_field(name="🖼️ Avatar", value=f"[Link]({member.display_avatar.url})", inline=True)
+        e.set_footer(text=f"ID: {member.id} • Solicitado por {ctx.author}")
         await ctx.send(embed=e)
     except Exception as ex:
         await ctx.send(embed=embed_chido(f"error {ex}"))
 
+# ===================== NUEVO SERVERINFO SUPER COMPLETO =====================
 @bot.command(name="serverinfo")
 async def serverinfo(ctx):
     if not has_perm(ctx): return
     g=ctx.guild
-    e=discord.Embed(title=f"Server Info - {g.name}", color=0x0b0b0b)
+    humans = len([m for m in g.members if not m.bot])
+    bots = len([m for m in g.members if m.bot])
+    online = len([m for m in g.members if m.status != discord.Status.offline])
+    
+    e=discord.Embed(title=f"SERVERINFO - {g.name}", color=0x000000)
     if g.icon: e.set_thumbnail(url=g.icon.url)
-    e.add_field(name="📋 General", value=f"**ID:** ( {g.id} )\n**Owner:** <@{g.owner_id}>\n**Creado:** {g.created_at.strftime('%d/%m/%Y')}", inline=False)
-    e.add_field(name=f"👥 Miembros [{g.member_count}]", value=f"**Humanos:** {len([m for m in g.members if not m.bot])}\n**Bots:** {len([m for m in g.members if m.bot])}", inline=False)
-    e.add_field(name="🔒 Seguridad", value=f"**Verificación:** {g.verification_level}", inline=False)
+    if g.banner: e.set_image(url=g.banner.url)
+    
+    e.add_field(name="📋 General", value=f"**ID:** ( {g.id} )\n**Owner:** <@{g.owner_id}> ( {g.owner_id} )\n**Creado:** {g.created_at.strftime('%d/%m/%Y')}\nHace {(datetime.now(timezone.utc) - g.created_at).days} días", inline=False)
+    e.add_field(name=f"👥 Miembros [{g.member_count}]", value=f"**Humanos:** {humans}\n**Bots:** {bots}\n**Online:** {online}\n**Offline:** {g.member_count - online}", inline=True)
+    e.add_field(name="💬 Canales", value=f"**Texto:** {len(g.text_channels)}\n**Voz:** {len(g.voice_channels)}\n**Categorías:** {len(g.categories)}\n**Total:** {len(g.channels)}", inline=True)
+    e.add_field(name="🎭 Roles / Emojis", value=f"**Roles:** {len(g.roles)}\n**Emojis:** {len(g.emojis)}/{g.emoji_limit}\n**Stickers:** {len(g.stickers)}\n**Más alto:** {g.roles[-1].mention if len(g.roles)>1 else 'Ninguno'}", inline=True)
+    e.add_field(name="🚀 Boost", value=f"**Nivel:** {g.premium_tier}\n**Boosts:** {g.premium_subscription_count}\n**Boosters:** {len(g.premium_subscribers)}\n**Vanity:** {g.vanity_url_code or 'No'}", inline=True)
+    e.add_field(name="🔒 Seguridad", value=f"**Verificación:** {g.verification_level}\n**Filtro:** {g.explicit_content_filter}\n**2FA:** {g.mfa_level}\n**NSFW:** {g.nsfw_level}", inline=True)
+    e.add_field(name="✨ Features", value=", ".join(g.features)[:1000] if g.features else "Ninguna", inline=False)
     await ctx.send(embed=e)
 
 @bot.command(name="ban")
@@ -938,63 +972,62 @@ async def nick(ctx, user_id: str = None, *, new_nick: str = None):
         await ctx.send(embed=embed_chido(f"( {uid} ) nick set as {new_nick}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
 
-# ===================== HELP ESTÉTICO NUEVO - CON TODOS TUS COMANDOS =====================
+# ===================== HELP NEGRO COMO ANTES - 1 SOLO EMBED =====================
 @bot.command(name="help")
 async def help_cmd(ctx):
     if not has_perm(ctx): return
+    embed = discord.Embed(title="commands", color=0x000000)
+    embed.description = """
+**MUSIC**
+`_guardar` save audio
+`_list` list audios
+`_quitar` name delete audio
+`_join` join voice
+`_leave` leave voice
+`_tuputamadre [name]` play 5000%
+`_stop` stop
 
-    # 1 - MUSIC
-    embed1 = discord.Embed(title="🎵 MUSIC - Audios", description="Guarda y reproduce audios al 5000%", color=0x00ff88)
-    embed1.add_field(name="🎙️ _guardar", value="`save audio`\nAbre panel con nombre + audio", inline=True)
-    embed1.add_field(name="📋 _list", value="`list audios`\nMuestra todos", inline=True)
-    embed1.add_field(name="🗑️ _quitar", value="`name delete audio`\n`_quitar nombre`", inline=True)
-    embed1.add_field(name="🔊 _join", value="`join voice`\nUne al VC", inline=True)
-    embed1.add_field(name="🔊 _leave", value="`leave voice`\nSale del VC", inline=True)
-    embed1.add_field(name="▶️ _tuputamadre [name]", value="`play 5000%`\nReproduce audio", inline=True)
-    embed1.add_field(name="⏹️ _stop", value="`stop`\nPara audio", inline=True)
+**ROLES**
+`_r_add @user nombre_del_rol`
+`_r_remove @user nombre_del_rol`
 
-    # 2 - ROLES & BOTS
-    embed2 = discord.Embed(title="🤖 ROLES & BOTS", description="Control de roles y permisos de bots", color=0xffcc00)
-    embed2.add_field(name="👤 _r_add", value="`@user nombre_del_rol`\nAñade rol", inline=True)
-    embed2.add_field(name="👤 _r_remove", value="`@user nombre_del_rol`\nQuita rol", inline=True)
-    embed2.add_field(name="🤖 _b_add", value="`ID` permite meter bots", inline=True)
-    embed2.add_field(name="🤖 _b_remove", value="`ID` quita permiso", inline=True)
-    embed2.add_field(name="🤖 _b_list", value="Lista permitidos", inline=True)
+**BOTS**
+`_b_add ID` - quien puede meter bots
+`_b_remove ID`
+`_b_list`
 
-    # 3 - WHITELIST & IMMUNE
-    embed3 = discord.Embed(title="🛡️ WHITELIST & IMMUNE", description="Lista blanca y roles inmunes", color=0x0078d7)
-    embed3.add_field(name="✅ _whitelist_add", value="`r/p ID`\nr=rol p=persona", inline=True)
-    embed3.add_field(name="❌ _whitelist_remove", value="`r/p ID`\nQuita de whitelist", inline=True)
-    embed3.add_field(name="📋 _whitelist_list", value="Muestra whitelist completa", inline=True)
-    embed3.add_field(name="🛡️ _role_inmune_add", value="`rol` rol inmune", inline=True)
-    embed3.add_field(name="🛡️ _role_inmune_remove", value="`rol` quita inmune", inline=True)
-    embed3.add_field(name="🛡️ _role_inmune_list", value="Lista roles inmunes", inline=True)
+**WHITELIST**
+`_whitelist_add r/p ID`
+`_whitelist_remove r/p ID`
+`_whitelist_list`
 
-    # 4 - OWNERS & BACKUP
-    embed4 = discord.Embed(title="👑 OWNERS & BACKUP", description="Dueños y respaldos", color=0x9b59b6)
-    embed4.add_field(name="👑 _mibebe", value="`ID` super owner (solo tú)", inline=True)
-    embed4.add_field(name="👑 _owner_add", value="`ID` añade owner", inline=True)
-    embed4.add_field(name="👑 _owner_remove", value="`ID` quita owner", inline=True)
-    embed4.add_field(name="📋 _owner_list", value="Lista owners", inline=True)
-    embed4.add_field(name="💾 _backup", value="`create` crea backup\n`load` restaura", inline=True)
+**IMMUNE**
+`_role_inmune_add rol`
+`_role_inmune_remove rol`
+`_role_inmune_list`
 
-    # 5 - MOD & INFO
-    embed5 = discord.Embed(title="🔨 MOD & INFO", description="Moderación e info", color=0xff4444)
-    embed5.add_field(name="🔨 _ban", value="`ID razón` banea", inline=True)
-    embed5.add_field(name="🔨 _unban", value="`ID` desbanea", inline=True)
-    embed5.add_field(name="🔨 _kick", value="`ID` kickea", inline=True)
-    embed5.add_field(name="🧹 _purge", value="`cantidad` borra mensajes", inline=True)
-    embed5.add_field(name="🔒 _lock / _unlock", value="Bloquea / desbloquea canal", inline=True)
-    embed5.add_field(name="💬 _say", value="`texto` manda embed", inline=True)
-    embed5.add_field(name="✏️ _nick", value="`ID nuevo_nick`", inline=True)
-    embed5.add_field(name="ℹ️ _userinfo", value="`[ID]` info usuario", inline=True)
-    embed5.add_field(name="ℹ️ _serverinfo", value="Info server", inline=True)
-    embed5.set_footer(text="Total 33 comandos • Antinuke • SvcHost Fix")
+**OWNERS**
+`_mibebe ID` (solo tu) - super owner por server, a el le llega todo
+`_owner_add ID`
+`_owner_remove ID`
+`_owner_list`
 
-    await ctx.send(embed=embed1)
-    await ctx.send(embed=embed2)
-    await ctx.send(embed=embed3)
-    await ctx.send(embed=embed4)
-    await ctx.send(embed=embed5)
+**MOD**
+`_ban ID`
+`_unban ID`
+`_kick ID`
+`_purge amount`
+`_lock`
+`_unlock`
+`_say text`
+`_nick ID newnick`
+
+**INFO**
+`_userinfo [ID]`
+`_serverinfo`
+`_backup create/load`
+"""
+    embed.set_footer(text=f"AuraBot • Solicitado por {ctx.author}", icon_url=ctx.author.display_avatar.url if ctx.author.display_avatar else None)
+    await ctx.send(embed=embed)
 
 bot.run(TOKEN)
