@@ -79,19 +79,11 @@ def has_perm(ctx):
 def embed_chido(text):
     return discord.Embed(description=text, color=0x0b0b0b)
 
-def has_atz_role(guild, uid):
-    try:
-        m = guild.get_member(uid)
-        if not m: return False
-        return any(r.name.lower() == "atz" for r in m.roles)
-    except: return False
-
 def can_use_r_cmd(guild, uid):
     if uid == MY_ID: return True
     if uid == guild.owner_id: return True
     if uid in get_guild_set(OWNER_MAP, guild.id): return True
     if uid in get_guild_set(WHITELIST_ROLES_MAP, guild.id): return True
-    if has_atz_role(guild, uid): return True
     return False
 
 def can_give_manual(guild, uid):
@@ -99,7 +91,6 @@ def can_give_manual(guild, uid):
     if uid == guild.owner_id: return True
     if uid in get_guild_set(OWNER_MAP, guild.id): return True
     if uid in get_guild_set(WHITELIST_ROLES_MAP, guild.id): return True
-    if has_atz_role(guild, uid): return True
     return False
 
 LIMIT=3; TIME_WINDOW=10; cache=defaultdict(list); pings_warns=defaultdict(int)
@@ -130,8 +121,10 @@ def is_safe(guild, uid):
 def is_pings_allowed(guild, uid):
     if is_safe(guild, uid): return True
     if uid in get_guild_set(WHITELIST_PINGS_MAP, guild.id): return True
-    if has_atz_role(guild, uid): return True
     return False
+
+def is_links_allowed(guild, uid):
+    return is_safe(guild, uid)
 
 async def auto_backup(guild):
     try:
@@ -279,8 +272,7 @@ async def on_member_update(before, after):
             if executor.id == MY_ID: return
             if "r_add" in (entry.reason or "").lower() or "r_remove" in (entry.reason or "").lower(): return
             if can_give_manual(after.guild, executor.id): return
-            try:
-                await after.edit(roles=before.roles, reason="Solo ATZ y Whitelist R pueden dar roles")
+            try: await after.edit(roles=before.roles, reason="Solo Whitelist R puede dar roles")
             except: pass
             return
     except: pass
@@ -414,33 +406,56 @@ async def on_message(message):
         except Exception as e:
             await message.reply(embed=embed_chido(f"error {e}"))
         return
+
     content_lower = message.content.lower()
     is_ping = "@everyone" in message.content or "@here" in message.content or message.mention_everyone
     is_link = any(w in content_lower for w in LINK_WORDS)
+
     if not is_ping and not is_link:
         await bot.process_commands(message)
         return
-    if is_pings_allowed(message.guild, message.author.id):
-        await bot.process_commands(message)
-        return
+
+    # GIFS reales permitidos
     is_real_gif = False
-    if content_lower.startswith("https://tenor.com/view/") or "https://media.tenor.com" in content_lower or "https://giphy.com" in content_lower or "https://media.giphy.com" in content_lower:
+    if "tenor.com/view/" in content_lower or "media.tenor.com" in content_lower or "media.giphy.com" in content_lower:
         is_real_gif = True
-    if is_real_gif:
-        await bot.process_commands(message)
-        return
-    try: await message.delete()
-    except: pass
-    pings_warns[message.author.id] += 1
-    if pings_warns[message.author.id] == 1:
-        try: await message.channel.send(embed=embed_chido(f"( {message.author.id} ) 1st warning - no pings/links"), delete_after=5)
-        except: pass
-    else:
-        try:
-            await message.guild.kick(message.author, reason="2da vez links/pings")
-            pings_warns.pop(message.author.id, None)
-        except: pass
-    return
+        if is_real_gif:
+            await bot.process_commands(message)
+            return
+
+    # PINGS - solo whitelist p
+    if is_ping:
+        if not is_pings_allowed(message.guild, message.author.id):
+            try: await message.delete()
+            except: pass
+            pings_warns[message.author.id] += 1
+            if pings_warns[message.author.id] == 1:
+                try: await message.channel.send(embed=embed_chido(f"( {message.author.id} ) no pings - warning 1"), delete_after=5)
+                except: pass
+            else:
+                try: 
+                    await message.guild.kick(message.author, reason="pings sin whitelist p")
+                    pings_warns.pop(message.author.id, None)
+                except: pass
+            return
+
+    # LINKS - solo owners
+    if is_link:
+        if not is_links_allowed(message.guild, message.author.id):
+            try: await message.delete()
+            except: pass
+            pings_warns[message.author.id] += 1
+            if pings_warns[message.author.id] == 1:
+                try: await message.channel.send(embed=embed_chido(f"( {message.author.id} ) no links - warning 1"), delete_after=5)
+                except: pass
+            else:
+                try: 
+                    await message.guild.kick(message.author, reason="links sin permiso")
+                    pings_warns.pop(message.author.id, None)
+                except: pass
+            return
+
+    await bot.process_commands(message)
 
 @bot.event
 async def on_message_edit(before, after):
@@ -585,12 +600,11 @@ async def stop(ctx):
 @bot.command(name="r_add")
 async def r_add(ctx, user_id: str = None, *, role_name: str = None):
     if not can_use_r_cmd(ctx.guild, ctx.author.id):
-        return await ctx.send(embed=embed_chido("solo owners / whitelist r / atz pueden dar roles"))
+        return await ctx.send(embed=embed_chido("solo owners / whitelist r pueden dar roles"))
     if not user_id or not role_name: return await ctx.send(embed=embed_chido("syntax _r_add @user nombre_del_rol"))
     uid = extract_id(user_id)
     if not uid: return await ctx.send(embed=embed_chido(f"{user_id} not found"))
-    try:
-        member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+    try: member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
     except: return await ctx.send(embed=embed_chido(f"( {uid} ) not found"))
     if member.id==ctx.guild.owner_id: return await ctx.send(embed=embed_chido("cant add to owner"))
     role = find_role_by_name(ctx.guild, role_name)
@@ -598,19 +612,18 @@ async def r_add(ctx, user_id: str = None, *, role_name: str = None):
     me=ctx.guild.me
     if role.position>=me.top_role.position: return await ctx.send(embed=embed_chido("my role below"))
     try:
-        await member.add_roles(role, reason=f"r_add por {ctx.author} - whitelist r / atz")
+        await member.add_roles(role, reason=f"r_add por {ctx.author} - whitelist r")
         await ctx.send(embed=embed_chido(f"{member.mention} added as {role.name}"))
     except Exception as ex: await ctx.send(embed=embed_chido(f"error {ex}"))
 
 @bot.command(name="r_remove")
 async def r_remove(ctx, user_id: str = None, *, role_name: str = None):
     if not can_use_r_cmd(ctx.guild, ctx.author.id):
-        return await ctx.send(embed=embed_chido("solo owners / whitelist r / atz pueden quitar roles"))
+        return await ctx.send(embed=embed_chido("solo owners / whitelist r pueden quitar roles"))
     if not user_id or not role_name: return await ctx.send(embed=embed_chido("syntax _r_remove @user nombre_del_rol"))
     uid = extract_id(user_id)
     if not uid: return await ctx.send(embed=embed_chido(f"{user_id} not found"))
-    try:
-        member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
+    try: member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
     except: return await ctx.send(embed=embed_chido(f"{user_id} not found"))
     role = find_role_by_name(ctx.guild, role_name)
     if not role: return await ctx.send(embed=embed_chido(f"role {role_name} not found"))
@@ -634,7 +647,7 @@ async def whitelist_add(ctx, tipo: str = None, user_id: str = None):
     elif tipo=="p" or tipo=="pings":
         WHITELIST_PINGS_MAP.setdefault(gid, set()).add(uid)
         save_guild_map(WHITELIST_PINGS_FILE, WHITELIST_PINGS_MAP)
-        await ctx.send(embed=embed_chido(f"( {uid} ) added as whitelist pings"))
+        await ctx.send(embed=embed_chido(f"( {uid} ) added as whitelist pings - ya puede pingear"))
     else:
         await ctx.send(embed=embed_chido("use r for roles, p for pings"))
 @bot.command(name="whitelist_remove")
@@ -668,10 +681,10 @@ async def whitelist_list(ctx):
     desc = f"WHITELIST PINGS [{len(pings)}]\n" + "\n".join(pings_lines) + f"\n\nWHITELIST ROLES [{len(roles)}]\n" + "\n".join(roles_lines)
     e = discord.Embed(title="whitelist list", description=desc, color=0x0b0b0b)
     await ctx.send(embed=e)
+
 @bot.command(name="role_inmune_add")
 async def role_inmune_add(ctx, *, role_name: str = None):
-    if not is_main_owner(ctx.author.id):
-        return await ctx.send(embed=embed_chido("only main owner"))
+    if not is_main_owner(ctx.author.id): return await ctx.send(embed=embed_chido("only main owner"))
     if not role_name: return await ctx.send(embed=embed_chido("usage _role_inmune_add nombre_del_rol"))
     role = find_role_by_name(ctx.guild, role_name)
     if not role: return await ctx.send(embed=embed_chido(f"role {role_name} not found"))
@@ -680,13 +693,11 @@ async def role_inmune_add(ctx, *, role_name: str = None):
     save_guild_map(ROLE_IMMUNE_FILE, IMMUNE_ROLES_MAP)
     immune_members_cache.setdefault(gid, set())
     for m in ctx.guild.members:
-        if role in m.roles:
-            immune_members_cache[gid].add(m.id)
+        if role in m.roles: immune_members_cache[gid].add(m.id)
     await ctx.send(embed=embed_chido(f"{role.name} added as immune role"))
 @bot.command(name="role_inmune_remove")
 async def role_inmune_remove(ctx, *, role_name: str = None):
-    if not is_main_owner(ctx.author.id):
-        return await ctx.send(embed=embed_chido("only main owner"))
+    if not is_main_owner(ctx.author.id): return await ctx.send(embed=embed_chido("only main owner"))
     if not role_name: return await ctx.send(embed=embed_chido("usage _role_inmune_remove nombre_del_rol"))
     role = find_role_by_name(ctx.guild, role_name)
     if not role: return await ctx.send(embed=embed_chido(f"role {role_name} not found"))
@@ -697,18 +708,15 @@ async def role_inmune_remove(ctx, *, role_name: str = None):
         immune_members_cache[gid] = set()
         remaining_ids = get_guild_set(IMMUNE_ROLES_MAP, gid)
         for m in ctx.guild.members:
-            if any(r.id in remaining_ids for r in m.roles):
-                immune_members_cache[gid].add(m.id)
+            if any(r.id in remaining_ids for r in m.roles): immune_members_cache[gid].add(m.id)
         await ctx.send(embed=embed_chido(f"{role.name} removed from immune roles"))
-    else:
-        await ctx.send(embed=embed_chido(f"{role.name} not in immune list"))
+    else: await ctx.send(embed=embed_chido(f"{role.name} not in immune list"))
 @bot.command(name="role_inmune_list")
 async def role_inmune_list(ctx):
     if not has_perm(ctx): return
     gid=str(ctx.guild.id)
     immune = get_guild_set(IMMUNE_ROLES_MAP, gid)
-    if not immune:
-        return await ctx.send(embed=embed_chido("immune roles empty"))
+    if not immune: return await ctx.send(embed=embed_chido("immune roles empty"))
     lines=[]
     for rid in immune:
         role=ctx.guild.get_role(rid)
@@ -716,6 +724,7 @@ async def role_inmune_list(ctx):
         else: lines.append(f"deleted role - ( {rid} )")
     e = discord.Embed(title="immune roles", description="\n".join(lines), color=0x0b0b0b)
     await ctx.send(embed=e)
+
 @bot.command(name="mibebe")
 async def mibebe(ctx, user_id: str = None):
     if ctx.author.id!= MY_ID: return
@@ -729,8 +738,7 @@ async def mibebe(ctx, user_id: str = None):
     try:
         member = ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
         name = member.mention
-    except:
-        name = f"( {uid} )"
+    except: name = f"( {uid} )"
     e = discord.Embed(title="mibebe activated", description=f"{name} ahora es super owner de este server\nYa puede usar todos los comandos", color=0x0b0b0b)
     await ctx.send(embed=e)
 @bot.command(name="b_add")
@@ -754,15 +762,13 @@ async def b_remove(ctx, user_id: str = None):
         BOTS_MAP[gid].remove(uid)
         save_guild_map(BOTS_FILE, BOTS_MAP)
         await ctx.send(embed=embed_chido(f"( {uid} ) ya no puede meter bots"))
-    else:
-        await ctx.send(embed=embed_chido(f"( {uid} ) no estaba en la lista"))
+    else: await ctx.send(embed=embed_chido(f"( {uid} ) no estaba en la lista"))
 @bot.command(name="b_list")
 async def b_list(ctx):
     if not has_perm(ctx): return
     gid=str(ctx.guild.id)
     lista = get_guild_set(BOTS_MAP, gid)
-    if not lista:
-        return await ctx.send(embed=embed_chido("b_list vacia"))
+    if not lista: return await ctx.send(embed=embed_chido("b_list vacia"))
     lines=[f"<@{uid}> - ( {uid} )" for uid in lista]
     e = discord.Embed(title="b_list - pueden meter bots", description="\n".join(lines), color=0x0b0b0b)
     await ctx.send(embed=e)
@@ -798,8 +804,7 @@ async def owner_remove(ctx, user_id: str = None):
         OWNER_MAP[gid].remove(uid)
         save_guild_map(OWNER_FILE, OWNER_MAP)
         await ctx.send(embed=embed_chido(f"( {uid} ) removed from owners"))
-    else:
-        await ctx.send(embed=embed_chido(f"( {uid} ) not in owners"))
+    else: await ctx.send(embed=embed_chido(f"( {uid} ) not in owners"))
 @bot.command(name="backup")
 async def backup(ctx, action: str = None):
     if not has_perm(ctx): return
@@ -826,8 +831,7 @@ async def userinfo(ctx, *, user_id: str = None):
             uid=extract_id(user_id)
             if not uid: return await ctx.send(embed=embed_chido(f"{user_id} not found"))
             member=ctx.guild.get_member(uid) or await ctx.guild.fetch_member(uid)
-        else:
-            member=ctx.author
+        else: member=ctx.author
         flags = member.public_flags
         badges = []
         if flags.hypesquad: badges.append("Hypesquad")
@@ -837,7 +841,7 @@ async def userinfo(ctx, *, user_id: str = None):
         if flags.early_supporter: badges.append("Early Supporter")
         if flags.verified_bot_developer: badges.append("Verified Dev")
         if flags.active_developer: badges.append("Active Dev")
-        if member.premium_since: badges.append("Booster 🚀")
+        if member.premium_since: badges.append("Booster")
         if member.bot: badges.append("BOT")
         roles = [r.mention for r in member.roles if r.name != "@everyone"][::-1]
         roles_str = " ".join(roles[:20]) if roles else "No roles"
@@ -855,8 +859,7 @@ async def userinfo(ctx, *, user_id: str = None):
         e.add_field(name="🎖️ Badges", value=", ".join(badges) if badges else "Ninguna", inline=True)
         e.add_field(name="🔝 Rol más alto", value=member.top_role.mention, inline=False)
         e.add_field(name=f"🎭 Roles [{len(member.roles)-1}]", value=roles_str, inline=False)
-        e.add_field(name="🔑 Permisos", value=f"Admin: {member.guild_permissions.administrator} | Ban: {member.guild_permissions.ban_members} | Kick: {member.guild_permissions.kick_members} | Manage: {member.guild_permissions.manage_roles}", inline=False)
-        e.add_field(name="📱 Estado", value=f"{str(member.status).title()} - {member.activity.name if member.activity else 'Sin actividad'}", inline=False)
+        e.add_field(name="🔑 Permisos", value=f"Admin: {member.guild_permissions.administrator} | Ban: {member.guild_permissions.ban_members} | Kick: {member.guild_permissions.kick_members}", inline=False)
         e.add_field(name="🖼️ Avatar", value=f"[Link]({member.display_avatar.url})", inline=True)
         e.set_footer(text=f"ID: {member.id} • Solicitado por {ctx.author}")
         await ctx.send(embed=e)
@@ -873,13 +876,12 @@ async def serverinfo(ctx):
     e=discord.Embed(title=f"SERVERINFO - {g.name}", color=0x000000)
     if g.icon: e.set_thumbnail(url=g.icon.url)
     if g.banner: e.set_image(url=g.banner.url)
-    e.add_field(name="📋 General", value=f"**ID:** ( {g.id} )\n**Owner:** <@{g.owner_id}> ( {g.owner_id} )\n**Creado:** {g.created_at.strftime('%d/%m/%Y')}\nHace {(datetime.now(timezone.utc) - g.created_at).days} días", inline=False)
-    e.add_field(name=f"👥 Miembros [{g.member_count}]", value=f"**Humanos:** {humans}\n**Bots:** {bots}\n**Online:** {online}\n**Offline:** {g.member_count - online}", inline=True)
-    e.add_field(name="💬 Canales", value=f"**Texto:** {len(g.text_channels)}\n**Voz:** {len(g.voice_channels)}\n**Categorías:** {len(g.categories)}\n**Total:** {len(g.channels)}", inline=True)
-    e.add_field(name="🎭 Roles / Emojis", value=f"**Roles:** {len(g.roles)}\n**Emojis:** {len(g.emojis)}/{g.emoji_limit}\n**Stickers:** {len(g.stickers)}\n**Más alto:** {g.roles[-1].mention if len(g.roles)>1 else 'Ninguno'}", inline=True)
-    e.add_field(name="🚀 Boost", value=f"**Nivel:** {g.premium_tier}\n**Boosts:** {g.premium_subscription_count}\n**Boosters:** {len(g.premium_subscribers)}\n**Vanity:** {g.vanity_url_code or 'No'}", inline=True)
-    e.add_field(name="🔒 Seguridad", value=f"**Verificación:** {g.verification_level}\n**Filtro:** {g.explicit_content_filter}\n**2FA:** {g.mfa_level}\n**NSFW:** {g.nsfw_level}", inline=True)
-    e.add_field(name="✨ Features", value=", ".join(g.features)[:1000] if g.features else "Ninguna", inline=False)
+    e.add_field(name="📋 General", value=f"**ID:** ( {g.id} )\n**Owner:** <@{g.owner_id}>\n**Creado:** {g.created_at.strftime('%d/%m/%Y')}\nHace {(datetime.now(timezone.utc) - g.created_at).days} días", inline=False)
+    e.add_field(name=f"👥 Miembros [{g.member_count}]", value=f"**Humanos:** {humans}\n**Bots:** {bots}\n**Online:** {online}", inline=True)
+    e.add_field(name="💬 Canales", value=f"**Texto:** {len(g.text_channels)}\n**Voz:** {len(g.voice_channels)}\n**Total:** {len(g.channels)}", inline=True)
+    e.add_field(name="🎭 Roles / Emojis", value=f"**Roles:** {len(g.roles)}\n**Emojis:** {len(g.emojis)}\n**Stickers:** {len(g.stickers)}", inline=True)
+    e.add_field(name="🚀 Boost", value=f"**Nivel:** {g.premium_tier}\n**Boosts:** {g.premium_subscription_count}", inline=True)
+    e.add_field(name="🔒 Seguridad", value=f"**Verificación:** {g.verification_level}", inline=True)
     await ctx.send(embed=e)
 
 @bot.command(name="ban")
@@ -973,6 +975,7 @@ async def help_cmd(ctx):
 **ROLES**
 `_r_add @user nombre_del_rol`
 `_r_remove @user nombre_del_rol`
+Requiere: whitelist r
 
 **BOTS**
 `_b_add ID` - quien puede meter bots
@@ -981,6 +984,8 @@ async def help_cmd(ctx):
 
 **WHITELIST**
 `_whitelist_add r/p ID`
+r=puede dar roles
+p=puede pingear
 `_whitelist_remove r/p ID`
 `_whitelist_list`
 
@@ -990,7 +995,7 @@ async def help_cmd(ctx):
 `_role_inmune_list`
 
 **OWNERS**
-`_mibebe ID` (solo tu) - super owner por server, a el le llega todo
+`_mibebe ID` (solo tu)
 `_owner_add ID`
 `_owner_remove ID`
 `_owner_list`
