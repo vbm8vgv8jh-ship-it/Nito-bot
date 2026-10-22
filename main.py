@@ -1,5 +1,5 @@
 import os, json, discord, asyncio, time, shutil
-from discord.ext import commands
+from discord.ext import commands, tasks
 from datetime import datetime, timezone
 from collections import defaultdict
 
@@ -12,6 +12,7 @@ WHITELIST_ROLES_FILE="whitelist_roles.json"
 ROLE_IMMUNE_FILE="role_immune.json"
 VOICE_FILE="voice.json"
 BOTS_FILE="bots_whitelist.json"
+VC_IMMUNE_FILE="vc_inmunes.json" # <-- NUEVO
 BACKUP_DIR="backups"
 MUSICA_DIR="musica"
 os.makedirs(BACKUP_DIR, exist_ok=True)
@@ -44,6 +45,7 @@ WHITELIST_ROLES_MAP = load_guild_map(WHITELIST_ROLES_FILE)
 IMMUNE_ROLES_MAP = load_guild_map(ROLE_IMMUNE_FILE)
 BOTS_MAP = load_guild_map(BOTS_FILE)
 VOICE_CHANNELS = load_json_file(VOICE_FILE)
+VC_IMMUNE_MAP = load_json_file(VC_IMMUNE_FILE) # <-- NUEVO
 
 intents=discord.Intents.default()
 intents.message_content=True
@@ -161,6 +163,33 @@ async def nuke_punish(guild, uid, reason):
         await guild.ban(m, reason=f"ANTINUKE {reason}")
     except: pass
 
+# --- FUNCIONES NUEVAS VC INMUNE ---
+async def bloquear_canal_vc(canal: discord.VoiceChannel):
+    guild = canal.guild
+    try:
+        await canal.set_permissions(guild.default_role, manage_channels=False, manage_permissions=False)
+        for rol in guild.roles:
+            if rol.permissions.manage_channels or rol.permissions.administrator:
+                if rol.id != guild.me.top_role.id and not rol.is_default():
+                    try: await canal.set_permissions(rol, manage_channels=False, manage_permissions=False)
+                    except: pass
+        owner = guild.get_member(MY_ID) or guild.owner
+        try:
+            if owner: await canal.set_permissions(owner, manage_channels=True, manage_permissions=True)
+            await canal.set_permissions(guild.me, manage_channels=True, manage_permissions=True)
+        except: pass
+    except: pass
+
+@tasks.loop(seconds=30)
+async def loop_vc_proteccion():
+    data = load_json_file(VC_IMMUNE_FILE)
+    for guild in bot.guilds:
+        gid = str(guild.id)
+        if gid not in data: continue
+        for cid in list(data[gid].keys()):
+            canal = guild.get_channel(int(cid))
+            if canal: await bloquear_canal_vc(canal)
+
 class BotApprovalView(discord.ui.View):
     def __init__(self, guild_id: int, bot_id: int, inviter_id: int):
         super().__init__(timeout=None)
@@ -237,6 +266,10 @@ async def on_ready():
                     vc = await channel.connect(self_deaf=False, self_mute=False)
                     voice_clients[guild.id] = vc
             except: pass
+    try: 
+        if not loop_vc_proteccion.is_running():
+            loop_vc_proteccion.start()
+    except: pass
 
 @bot.event
 async def on_voice_state_update(member, before, after):
@@ -313,12 +346,48 @@ async def on_member_remove(member):
 
 @bot.event
 async def on_guild_channel_delete(channel):
+    # --- SISTEMA VC INMUNE ANTI-DELETE ---
+    try:
+        if isinstance(channel, discord.VoiceChannel):
+            data = load_json_file(VC_IMMUNE_FILE)
+            gid = str(channel.guild.id)
+            if gid in data and str(channel.id) in data[gid]:
+                info = data[gid][str(channel.id)]
+                await asyncio.sleep(0.5)
+                async for e in channel.guild.audit_logs(limit=3, action=discord.AuditLogAction.channel_delete):
+                    if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
+                    if e.target.id != channel.id: continue
+                    if is_safe(channel.guild, e.user.id): 
+                        # Fuiste tu, si lo borras se quita de inmunes
+                        data[gid].pop(str(channel.id), None)
+                        save_json_file(VC_IMMUNE_FILE, data)
+                        return
+                    # Banear al que lo borro aunque sea admin
+                    try: await channel.guild.ban(e.user, reason=f"Intento borrar VC inmune {info['name']}")
+                    except: pass
+                    # Restaurar
+                    try:
+                        cat = channel.guild.get_channel(info['category']) if info.get('category') else None
+                        nuevo = await channel.guild.create_voice_channel(name=info['name'], bitrate=info.get('bitrate', 64000), user_limit=info.get('limit', 0), category=cat, reason="VC Inmune restaurado")
+                        data[gid].pop(str(channel.id), None)
+                        data[gid][str(nuevo.id)] = info
+                        save_json_file(VC_IMMUNE_FILE, data)
+                        await bloquear_canal_vc(nuevo)
+                        if channel.guild.system_channel:
+                            await channel.guild.system_channel.send(f"🚨 {e.user.mention} intentó borrar **{info['name']}** y fue BANEADO. Canal restaurado: {nuevo.mention}")
+                    except: pass
+                    return
+    except Exception as ex:
+        print(f"Error vc inmune delete: {ex}")
+
+    # Tu sistema antinuke original
     try:
         async for e in channel.guild.audit_logs(limit=1,action=discord.AuditLogAction.channel_delete):
             if (datetime.now(timezone.utc)-e.created_at).total_seconds()>10: continue
             if is_safe(channel.guild, e.user.id): return
             if is_spam(e.user.id): await nuke_punish(channel.guild,e.user.id,"Channel Delete")
     except: pass
+
 @bot.event
 async def on_guild_channel_create(channel):
     try:
@@ -415,7 +484,6 @@ async def on_message(message):
         await bot.process_commands(message)
         return
 
-    # GIFS reales permitidos
     is_real_gif = False
     if "tenor.com/view/" in content_lower or "media.tenor.com" in content_lower or "media.giphy.com" in content_lower:
         is_real_gif = True
@@ -423,7 +491,6 @@ async def on_message(message):
             await bot.process_commands(message)
             return
 
-    # PINGS - solo whitelist p
     if is_ping:
         if not is_pings_allowed(message.guild, message.author.id):
             try: await message.delete()
@@ -439,7 +506,6 @@ async def on_message(message):
                 except: pass
             return
 
-    # LINKS - solo owners
     if is_link:
         if not is_links_allowed(message.guild, message.author.id):
             try: await message.delete()
@@ -536,6 +602,48 @@ async def quitar(ctx, *, nombre: str = None):
     if not found: return await ctx.send(embed=embed_chido(f"{nombre_safe} not found"))
     os.remove(found)
     await ctx.send(embed=embed_chido(f"{nombre_safe} deleted"))
+
+# --- COMANDOS NUEVOS VC INMUNE ---
+@bot.command(name="vc_inmune_add")
+async def vc_inmune_add(ctx, canal: discord.VoiceChannel = None):
+    if not is_main_owner(ctx.author.id): return await ctx.send(embed=embed_chido("only main owner"))
+    if not canal:
+        if ctx.author.voice and ctx.author.voice.channel:
+            canal = ctx.author.voice.channel
+        else:
+            return await ctx.send(embed=embed_chido("usage _vc_inmune_add #canal_de_voz o metete a un VC"))
+    data = load_json_file(VC_IMMUNE_FILE)
+    gid = str(ctx.guild.id)
+    data.setdefault(gid, {})
+    data[gid][str(canal.id)] = {"name": canal.name, "category": canal.category.id if canal.category else None, "bitrate": canal.bitrate, "limit": canal.user_limit}
+    save_json_file(VC_IMMUNE_FILE, data)
+    await bloquear_canal_vc(canal)
+    await ctx.send(embed=embed_chido(f"🔒 {canal.name} ahora es INMUNE - boton oculto + ban si lo intentan borrar"))
+
+@bot.command(name="vc_inmune_remove")
+async def vc_inmune_remove(ctx, canal: discord.VoiceChannel = None):
+    if not is_main_owner(ctx.author.id): return
+    if not canal: return await ctx.send(embed=embed_chido("usage _vc_inmune_remove #canal"))
+    data = load_json_file(VC_IMMUNE_FILE)
+    gid = str(ctx.guild.id)
+    if gid in data and str(canal.id) in data[gid]:
+        data[gid].pop(str(canal.id))
+        save_json_file(VC_IMMUNE_FILE, data)
+        await ctx.send(embed=embed_chido(f"🔓 {canal.name} ya no es inmune"))
+    else:
+        await ctx.send(embed=embed_chido("ese canal no era inmune"))
+
+@bot.command(name="vc_inmune_list")
+async def vc_inmune_list(ctx):
+    if not has_perm(ctx): return
+    data = load_json_file(VC_IMMUNE_FILE)
+    gid = str(ctx.guild.id)
+    if gid not in data or not data[gid]:
+        return await ctx.send(embed=embed_chido("no hay vcs inmunes"))
+    lines = [f"🔊 {v['name']} - <#{k}>" for k,v in data[gid].items()]
+    e = discord.Embed(title="VCs Inmunes", description="\n".join(lines), color=0x0b0b0b)
+    await ctx.send(embed=e)
+
 @bot.command(name="join")
 async def join(ctx):
     if not has_perm(ctx): return
@@ -971,6 +1079,11 @@ async def help_cmd(ctx):
 `_leave` leave voice
 `_tuputamadre [name]` play 5000%
 `_stop` stop
+
+**VC INMUNE (NUEVO)**
+`_vc_inmune_add #canal` - VC indestructible
+`_vc_inmune_remove #canal`
+`_vc_inmune_list`
 
 **ROLES**
 `_r_add @user nombre_del_rol`
