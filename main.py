@@ -70,7 +70,7 @@ intents.members=True
 intents.guilds=True
 intents.presences=True
 intents.voice_states=True
-bot=commands.Bot(command_prefix="_",intents=intents,help_command=None, chunk_guilds_at_startup=True)
+bot=commands.Bot(command_prefix="_",intents=intents,help_command=None, chunk_guilds_at_startup=False)
 
 voice_clients={}
 guardar_sessions={}
